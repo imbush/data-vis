@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lab data visualizations</title>
+<style>
+  html, body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont,
+               "Segoe UI", Arial, sans-serif; color: #222; background: #fafafa; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 28px 24px 60px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  .sub { color: #666; font-size: 14px; margin: 0 0 28px; line-height: 1.45; }
+  h2 { font-size: 18px; margin: 28px 0 8px; color: #333; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+          gap: 14px; }
+  .card { background: white; border: 1px solid #e5e5e5; border-radius: 8px;
+          padding: 14px 16px; text-decoration: none; color: inherit;
+          transition: border-color .12s, transform .12s; }
+  .card:hover { border-color: #1f77b4; transform: translateY(-1px); }
+  .card .title { font-weight: 600; font-size: 16px; margin-bottom: 4px; color: #1f77b4; }
+  .card .meta  { font-size: 12px; color: #666; line-height: 1.4; }
+  .card .excl  { font-size: 11px; color: #999; margin-top: 4px; font-style: italic; }
+  footer { font-size: 12px; color: #888; margin-top: 40px; line-height: 1.5; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+         background: #eee; padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Lab data visualizations</h1>
+<p class="sub">
+Interactive explorers for Tasic 2018 mouse V1 GABAergic interneurons.
+Each app fits a K=4 archetype NMF (consensus over 20 inits) on a per-subclass HVG panel,
+then projects ~3,000 broader-transcriptome genes onto the same archetypes via NNLS.
+Two rotatable 3D tetrahedrons: cells (W barycentric) on the left, genes (H barycentric)
+on the right. Hover to cross-recolor.
+</p>
+
+<h2>V1 archetype explorers (Tasic 2018)</h2>
+<div class="grid">
+
+<a class="card" href="lamp5/">
+  <div class="title">Lamp5 →</div>
+  <div class="meta">989 cells · 144 panel + 3,297 imputed genes · silhouette 0.997</div>
+  <div class="excl">Excluded: Lamp5 Lhx6, Lamp5 Krt73</div>
+</a>
+
+<a class="card" href="sst/">
+  <div class="title">Sst →</div>
+  <div class="meta">1,511 cells · 150 panel + 3,293 imputed genes · silhouette 0.746</div>
+  <div class="excl">Excluded: Sst Chodl</div>
+</a>
+
+<a class="card" href="pvalb/">
+  <div class="title">Pvalb →</div>
+  <div class="meta">1,089 cells · 150 panel + 3,298 imputed genes · silhouette 0.813</div>
+  <div class="excl">Excluded: Pvalb Vipr2, Pvalb Gabrg1</div>
+</a>
+
+<a class="card" href="vip/">
+  <div class="title">Vip →</div>
+  <div class="meta">1,690 cells · 169 panel + 3,292 imputed genes · silhouette 0.999</div>
+  <div class="excl">No subtype-level outliers excluded</div>
+</a>
+
+<a class="card" href="sncg/">
+  <div class="title">Sncg →</div>
+  <div class="meta">151 cells · 299 panel + 3,238 imputed genes · silhouette 0.998</div>
+  <div class="excl">Includes Sncg + Serpinf1 subclasses</div>
+</a>
+
+</div>
+
+<footer>
+Source: Tasic et al. 2018, mouse VISp (anterior lateral motor + primary visual). Panel HVG
+selected per subclass on log-CPM via Seurat-v3 variance. Outlier subtypes (long-projecting
+Sst Chodl, chandelier Pvalb Vipr2, etc.) were dropped before NMF. Hovering shows whether a
+gene is a panel HVG or NNLS-imputed from the broader transcriptome — imputed loadings for
+low-expression genes (most GPCRs) are noisy and should be read as rough estimates.<br>
+Built with Plotly · self-contained HTML, no server.
+</footer>
+
+</div>
+</body>
+</html>
