@@ -1,0 +1,22 @@
+# Datasets — never push to a public repo
+*.h5ad
+*.h5
+*.loom
+*.csv.gz
+*.mtx
+*.tsv.gz
+
+# Build / projection caches — they embed expression matrices
+cache/
+*.pkl
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
