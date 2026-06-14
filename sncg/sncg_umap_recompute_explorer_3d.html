@@ -20,6 +20,17 @@ h2 { margin: 0 0 2px 0; }
             border-radius: 3px; cursor: pointer; }
 .set-btn:hover { background: #eee; }
 .set-btn.active { background: #1f77b4; color: white; border-color: #1f77b4; }
+.subt-group { display: flex; flex-direction: column; gap: 2px;
+                padding: 4px 6px; border: 1px solid #e0c79a; background: #fffaf0;
+                border-radius: 4px; }
+.subt-group-head { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.subt-group-head .ct { color: #888; font-weight: 400; }
+.subt-group-head .grp-toggle { padding: 1px 7px; font-size: 11px;
+                                 border: 1px solid #ccc; background: #f6f6f6;
+                                 border-radius: 3px; cursor: pointer; }
+.subt-group-head .grp-toggle:hover { background: #eee; }
+.subt-group-checkboxes { display: flex; flex-wrap: wrap; gap: 4px;
+                           padding-left: 4px; }
 .subt-chk { display:inline-flex; align-items:center; gap:3px; padding:1px 6px;
              border:1px solid #ddd; border-radius:3px; background:#fafafa;
              font-size:12px; cursor:pointer; user-select:none; }
@@ -62,7 +73,19 @@ h2 { margin: 0 0 2px 0; }
                 background: #fafafa; border: 1px solid #e0e0e0; border-radius: 3px;
                 padding: 4px 6px; }
 .heatmap-caption { font-size: 11px; color: #555; line-height: 1.2;
-                    margin-bottom: 2px; display: flex; justify-content: space-between; }
+                    margin-bottom: 2px; display: flex; justify-content: space-between;
+                    flex-wrap: wrap; gap: 4px; }
+.heatmap-controls { display: inline-flex; align-items: center; gap: 4px;
+                      font-size: 11px; color: #555; }
+.heatmap-controls .label { font-weight: 600; }
+.heatmap-controls .order-btn { padding: 1px 7px; font-size: 11px;
+                                 border: 1px solid #bbb; background: #f6f6f6;
+                                 border-radius: 3px; cursor: pointer; }
+.heatmap-controls .order-btn:hover { background: #eee; }
+.heatmap-controls .order-btn.active { background: #1f77b4; color: white;
+                                        border-color: #1f77b4; cursor: default; }
+.group-by-toggle { display: inline-flex; align-items: center; gap: 3px;
+                     padding-left: 6px; cursor: pointer; }
 .line-strip-wrap { flex: 0 0 96px; position: relative; min-height: 72px;
                      border-bottom: 1px solid #c0c0c0; background: #ffffff; }
 #line-canvas { position: absolute; left: 0; top: 0;
@@ -117,7 +140,7 @@ working against the new basis.
 <div class="controls">
   <div class="controls-row" style="background:#fff3e0; border:1px solid #ffcc80; border-radius:4px; padding:4px 6px;">
     <span class="label">Subtypes:</span>
-    <label class="subt-chk"><input type="checkbox" data-sub="Serpinf1 Aqp5 Vip" checked> <span style="color:#1f77b4; font-weight:700;">●</span> Serpinf1 Aqp5 Vip <span class="ct">(16)</span></label><label class="subt-chk"><input type="checkbox" data-sub="Serpinf1 Clrn1" checked> <span style="color:#aec7e8; font-weight:700;">●</span> Serpinf1 Clrn1 <span class="ct">(10)</span></label><label class="subt-chk"><input type="checkbox" data-sub="Sncg Gpr50" checked> <span style="color:#ff7f0e; font-weight:700;">●</span> Sncg Gpr50 <span class="ct">(28)</span></label><label class="subt-chk"><input type="checkbox" data-sub="Sncg Slc17a8" checked> <span style="color:#ffbb78; font-weight:700;">●</span> Sncg Slc17a8 <span class="ct">(12)</span></label><label class="subt-chk"><input type="checkbox" data-sub="Sncg Vip Itih5" checked> <span style="color:#2ca02c; font-weight:700;">●</span> Sncg Vip Itih5 <span class="ct">(46)</span></label><label class="subt-chk"><input type="checkbox" data-sub="Sncg Vip Nptx2" checked> <span style="color:#98df8a; font-weight:700;">●</span> Sncg Vip Nptx2 <span class="ct">(39)</span></label>
+    <div class="subt-group" data-subclass="Sncg"><div class="subt-group-head"><b>Sncg</b> <span class="ct">(151 cells, 6 subtypes)</span><button class="grp-toggle" data-grp="Sncg" data-action="all" title="Check all in Sncg">all</button><button class="grp-toggle" data-grp="Sncg" data-action="none" title="Uncheck all in Sncg">none</button></div><div class="subt-group-checkboxes"><label class="subt-chk" data-grp-sub="Sncg"><input type="checkbox" data-sub="Serpinf1 Aqp5 Vip" data-grp="Sncg" checked> <span style="color:#1f77b4; font-weight:700;">●</span> Serpinf1 Aqp5 Vip <span class="ct">(16)</span></label><label class="subt-chk" data-grp-sub="Sncg"><input type="checkbox" data-sub="Serpinf1 Clrn1" data-grp="Sncg" checked> <span style="color:#aec7e8; font-weight:700;">●</span> Serpinf1 Clrn1 <span class="ct">(10)</span></label><label class="subt-chk" data-grp-sub="Sncg"><input type="checkbox" data-sub="Sncg Gpr50" data-grp="Sncg" checked> <span style="color:#ff7f0e; font-weight:700;">●</span> Sncg Gpr50 <span class="ct">(28)</span></label><label class="subt-chk" data-grp-sub="Sncg"><input type="checkbox" data-sub="Sncg Slc17a8" data-grp="Sncg" checked> <span style="color:#ffbb78; font-weight:700;">●</span> Sncg Slc17a8 <span class="ct">(12)</span></label><label class="subt-chk" data-grp-sub="Sncg"><input type="checkbox" data-sub="Sncg Vip Itih5" data-grp="Sncg" checked> <span style="color:#2ca02c; font-weight:700;">●</span> Sncg Vip Itih5 <span class="ct">(46)</span></label><label class="subt-chk" data-grp-sub="Sncg"><input type="checkbox" data-sub="Sncg Vip Nptx2" data-grp="Sncg" checked> <span style="color:#98df8a; font-weight:700;">●</span> Sncg Vip Nptx2 <span class="ct">(39)</span></label></div></div>
     <button id="subt-all">all</button>
     <button id="subt-none">none</button>
     <span style="flex: 1 1 0;"></span>
@@ -166,8 +189,14 @@ working against the new basis.
   </div>
   <div class="heatmap-row">
     <div class="heatmap-caption">
-      <span>Panel HVG z-expression — cells ordered by UMAP1 (pseudotime), genes by argmax of smoothed expression. <span id="heatmap-info" style="color:#888;"></span></span>
-      <span>← early &nbsp; UMAP1 &nbsp; late →</span>
+      <span>Panel HVG z-expression — genes by argmax of smoothed expression. <span id="heatmap-info" style="color:#888;"></span></span>
+      <span class="heatmap-controls">
+        <span class="label">order cells by</span>
+        <button class="order-btn active" data-axis="0">UMAP1</button>
+        <button class="order-btn" data-axis="1">UMAP2</button>
+        <button class="order-btn" data-axis="2">UMAP3</button>
+        <label class="group-by-toggle"><input type="checkbox" id="group-by-celltype"> group by cell type first</label>
+      </span>
     </div>
     <div class="line-strip-wrap"><canvas id="line-canvas"></canvas></div>
     <div class="heatmap-canvas-wrap">
@@ -386,6 +415,15 @@ document.getElementById('qc-pt').addEventListener('click', () => {
 // Subtype-subset UMAP recompute
 // ============================================================================
 const subtypeCheckboxes = Array.from(document.querySelectorAll('.subt-chk input[type="checkbox"]'));
+document.querySelectorAll('.grp-toggle').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const grp = btn.dataset.grp;
+    const want = btn.dataset.action === 'all';
+    subtypeCheckboxes.forEach(cb => {
+      if (cb.dataset.grp === grp) cb.checked = want;
+    });
+  });
+});
 document.getElementById('subt-all').addEventListener('click', () => {
   subtypeCheckboxes.forEach(cb => cb.checked = true);
 });
@@ -744,16 +782,42 @@ function sizeLineCanvas() {
   lineCanvas.width  = Math.max(1, Math.floor(lr.width  * dpr));
   lineCanvas.height = Math.max(1, Math.floor(lr.height * dpr));
 }
+// Cell-ordering state for the heatmap.
+let heatmapOrderAxis = 0;
+let heatmapGroupByType = false;
+
 function renderHeatmap() {
   sizeHeatmapCanvas();
   const ctx = heatCanvas.getContext('2d', {alpha: false});
   const W = heatCanvas.width, H = heatCanvas.height;
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
 
-  // 1. Active cells ordered by UMAP1 ascending
-  const activeIdx = [];
+  // 1. Active cells ordered by the chosen axis (with optional subtype grouping)
+  let activeIdx = [];
   for (let i = 0; i < cell_active.length; i++) if (cell_active[i]) activeIdx.push(i);
-  activeIdx.sort((a, b) => cell_score[a][0] - cell_score[b][0]);
+  const axis = heatmapOrderAxis;
+  if (heatmapGroupByType) {
+    const byType = new Map();
+    for (const i of activeIdx) {
+      const t = cell_subtype[i];
+      if (!byType.has(t)) byType.set(t, []);
+      byType.get(t).push(i);
+    }
+    const subtypeMean = [];
+    for (const [t, list] of byType) {
+      let s = 0; for (const i of list) s += cell_score[i][axis];
+      subtypeMean.push([t, s / list.length]);
+    }
+    subtypeMean.sort((a, b) => a[1] - b[1]);
+    activeIdx = [];
+    for (const [t] of subtypeMean) {
+      const list = byType.get(t);
+      list.sort((a, b) => cell_score[a][axis] - cell_score[b][axis]);
+      for (const i of list) activeIdx.push(i);
+    }
+  } else {
+    activeIdx.sort((a, b) => cell_score[a][axis] - cell_score[b][axis]);
+  }
   const m = activeIdx.length;
   if (m < 4) {
     heatInfo.textContent = '— need ≥4 active cells';
@@ -1042,6 +1106,19 @@ function scheduleHeatmapRedraw() {
   heatResizeTimer = setTimeout(renderHeatmap, 80);
 }
 window.addEventListener('resize', () => { resizePlots(); scheduleHeatmapRedraw(); });
+document.querySelectorAll('.order-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    heatmapOrderAxis = parseInt(btn.dataset.axis) || 0;
+    document.querySelectorAll('.order-btn').forEach(b =>
+      b.classList.toggle('active', b === btn));
+    renderHeatmap();
+  });
+});
+document.getElementById('group-by-celltype').addEventListener('change', e => {
+  heatmapGroupByType = e.target.checked;
+  renderHeatmap();
+});
+
 setTimeout(function() { resizePlots(); applyGeneFilter(); renderHeatmap(); clearLineGraph(); }, 80);
 </script>
 </body>
