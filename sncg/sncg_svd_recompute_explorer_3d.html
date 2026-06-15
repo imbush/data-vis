@@ -1112,5 +1112,153 @@ document.getElementById('group-by-celltype').addEventListener('change', e => {
 
 setTimeout(function() { resizePlots(); applyGeneFilter(); renderHeatmap(); clearLineGraph(); }, 80);
 </script>
+
+<script>
+/* copy-link snippet v1 — patches a "Copy link" button into deployed explorers.
+ *
+ * Click → serialises the state of every control with an id, every subtype
+ * checkbox (data-sub), every active button in a button group (.rg-btn,
+ * .order-btn, .axis-btn, .ord-btn, .grp-btn), and every input/select on the
+ * page into a base64-encoded JSON blob in the URL hash. On load, the hash
+ * is parsed and each control is restored, then the existing handlers are
+ * fired via .click()/.change() so the rest of the explorer reacts.
+ */
+(function() {
+  if (window.__copyLinkInstalled) return;
+  window.__copyLinkInstalled = true;
+
+  const KEY = 's';
+
+  function gather() {
+    const s = { v: 1, subs: {}, btns: {}, inputs: {}, toggles: {} };
+    document.querySelectorAll('input[type=checkbox][data-sub]').forEach(cb => {
+      s.subs[cb.dataset.sub] = cb.checked ? 1 : 0;
+    });
+    // single-active button groups — collect by parent container class
+    document.querySelectorAll('button.active').forEach(btn => {
+      const p = btn.parentElement;
+      if (!p) return;
+      const cls = (p.className || '').split(' ').filter(c =>
+        /toggle|btns|btn-row|axis-row|order-row|grp-row|controls/.test(c))[0];
+      if (!cls) return;
+      const val = btn.dataset.region || btn.dataset.axis ||
+                  btn.dataset.order  || btn.dataset.act   ||
+                  btn.dataset.grp    || btn.textContent.trim();
+      s.btns[cls] = val;
+    });
+    // ids: inputs/selects with values, checkboxes without data-sub
+    document.querySelectorAll('input[id], select[id]').forEach(el => {
+      if (el.dataset.sub) return;
+      if (el.type === 'checkbox') s.toggles[el.id] = el.checked ? 1 : 0;
+      else if (el.value !== undefined) s.inputs[el.id] = el.value;
+    });
+    return s;
+  }
+
+  function apply(s) {
+    if (!s) return;
+    if (s.subs) {
+      document.querySelectorAll('input[type=checkbox][data-sub]').forEach(cb => {
+        const k = cb.dataset.sub;
+        if (k in s.subs) cb.checked = !!s.subs[k];
+      });
+    }
+    if (s.inputs) {
+      Object.entries(s.inputs).forEach(([id, v]) => {
+        const el = document.getElementById(id);
+        if (el && el.value !== undefined) {
+          el.value = v;
+          el.dispatchEvent(new Event('input',  { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+    }
+    if (s.toggles) {
+      Object.entries(s.toggles).forEach(([id, v]) => {
+        const el = document.getElementById(id);
+        if (el && el.type === 'checkbox') {
+          el.checked = !!v;
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+    }
+    if (s.btns) {
+      Object.entries(s.btns).forEach(([cls, val]) => {
+        const grp = document.querySelector('.' + cls);
+        if (!grp) return;
+        grp.querySelectorAll('button').forEach(b => {
+          const v = b.dataset.region || b.dataset.axis ||
+                    b.dataset.order  || b.dataset.act   ||
+                    b.dataset.grp    || b.textContent.trim();
+          if (v === val) b.click();
+        });
+      });
+    }
+    // fire change on every subtype checkbox so dependent renders run
+    document.querySelectorAll('input[type=checkbox][data-sub]').forEach(cb => {
+      cb.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  }
+
+  function enc(o) {
+    const json = JSON.stringify(o);
+    let b64 = btoa(unescape(encodeURIComponent(json)));
+    b64 = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return b64;
+  }
+  function dec(b64) {
+    try {
+      b64 = b64.replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      return JSON.parse(decodeURIComponent(escape(atob(b64))));
+    } catch (e) { return null; }
+  }
+
+  function restore() {
+    const h = location.hash || location.search;
+    const m = h.match(new RegExp('[#&?]' + KEY + '=([^&]+)'));
+    if (!m) return;
+    const s = dec(decodeURIComponent(m[1]));
+    if (s) apply(s);
+  }
+
+  function mkBtn() {
+    const btn = document.createElement('button');
+    btn.id = 'copy-link-btn';
+    btn.title = 'Copy a link that reproduces the current view';
+    btn.textContent = '🔗 Copy link';
+    btn.style.cssText =
+      'position:fixed;top:10px;right:10px;font-size:12px;padding:5px 10px;' +
+      'background:#fff;border:1px solid #aaa;border-radius:4px;cursor:pointer;' +
+      'z-index:99999;box-shadow:0 1px 3px rgba(0,0,0,0.15);font-family:inherit;';
+    document.body.appendChild(btn);
+    btn.addEventListener('click', async () => {
+      const s = gather();
+      const b64 = enc(s);
+      const url = location.origin + location.pathname + '#' + KEY + '=' + b64;
+      try {
+        await navigator.clipboard.writeText(url);
+        const old = btn.textContent;
+        btn.textContent = '✓ Copied';
+        setTimeout(() => { btn.textContent = old; }, 1500);
+      } catch (e) {
+        window.prompt('Copy this URL:', url);
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      mkBtn();
+      // give explorer JS a beat to wire its own handlers
+      setTimeout(restore, 600);
+    });
+  } else {
+    mkBtn();
+    setTimeout(restore, 600);
+  }
+})();
+
+</script>
 </body>
 </html>
