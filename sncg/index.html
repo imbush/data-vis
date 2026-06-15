@@ -342,14 +342,18 @@ setTimeout(function() { resizePlots(); applyGeneFilter(); }, 50);
 </script>
 
 <script>
-/* copy-link snippet v1 — patches a "Copy link" button into deployed explorers.
+/* copy-link snippet v2 — patches a "Copy link" button into deployed explorers,
+ * AND makes the cross-explorer View: nav-bar carry the current UI state across.
  *
- * Click → serialises the state of every control with an id, every subtype
- * checkbox (data-sub), every active button in a button group (.rg-btn,
- * .order-btn, .axis-btn, .ord-btn, .grp-btn), and every input/select on the
- * page into a base64-encoded JSON blob in the URL hash. On load, the hash
- * is parsed and each control is restored, then the existing handlers are
- * fired via .click()/.change() so the rest of the explorer reacts.
+ * Click "Copy link" → serialises the state of every control with an id, every
+ * subtype checkbox (data-sub), every active button in a button group, every
+ * input/select, plus which Recompute was last fired, into a base64 JSON blob
+ * in the URL hash. On load, the hash is parsed, each control is restored,
+ * and the last Recompute button is re-fired so the embedding refits.
+ *
+ * Click any View: <other-viz> link → intercept, encode current state, jump
+ * to the target HTML with `#s=...` so the new explorer opens in the same
+ * subset / region / filter / gene-set you were already looking at.
  */
 (function() {
   if (window.__copyLinkInstalled) return;
@@ -358,7 +362,8 @@ setTimeout(function() { resizePlots(); applyGeneFilter(); }, 50);
   const KEY = 's';
 
   function gather() {
-    const s = { v: 1, subs: {}, btns: {}, inputs: {}, toggles: {} };
+    const s = { v: 1, subs: {}, btns: {}, inputs: {}, toggles: {},
+                recompute: window.__lastRecompute || 'panel' };
     document.querySelectorAll('input[type=checkbox][data-sub]').forEach(cb => {
       s.subs[cb.dataset.sub] = cb.checked ? 1 : 0;
     });
@@ -426,6 +431,20 @@ setTimeout(function() { resizePlots(); applyGeneFilter(); }, 50);
     document.querySelectorAll('input[type=checkbox][data-sub]').forEach(cb => {
       cb.dispatchEvent(new Event('change', { bubbles: true }));
     });
+    // Trigger the explorer's Recompute so the embedding refits to the restored
+    // subtype / region / gene-filter state. Without this the controls show the
+    // shared view but the cell positions still reflect the page's default fit.
+    // Saved state remembers whether a recompute ran and which button was last
+    // used; default is the panel-HVG recompute.
+    const wantRecompute = (s.recompute !== 0);  // default to true
+    if (wantRecompute) {
+      const which = s.recompute === 'genes' ? 'recompute-genes-btn' : 'recompute-btn';
+      const btn = document.getElementById(which) || document.getElementById('recompute-btn');
+      if (btn && !btn.disabled) {
+        // Defer so the change-event-driven state updates above settle first.
+        setTimeout(() => btn.click(), 80);
+      }
+    }
   }
 
   function enc(o) {
@@ -448,6 +467,41 @@ setTimeout(function() { resizePlots(); applyGeneFilter(); }, 50);
     if (!m) return;
     const s = dec(decodeURIComponent(m[1]));
     if (s) apply(s);
+  }
+
+  // Record which Recompute button was last pressed so a Copy-Link URL captures
+  // it and the restore step can fire the same one.
+  function instrumentRecomputeBtns() {
+    const tag = (which) => () => { window.__lastRecompute = which; };
+    const b1 = document.getElementById('recompute-btn');
+    const b2 = document.getElementById('recompute-genes-btn');
+    if (b1) b1.addEventListener('click', tag('panel'));
+    if (b2) b2.addEventListener('click', tag('genes'));
+  }
+
+  // Intercept clicks on the cross-explorer View: nav links and inject the
+  // current UI state into the target URL hash so switching SVD ↔ UMAP ↔
+  // diffmap ↔ NMF keeps the subtype subset, gene filter, region toggle,
+  // metabolism slider, etc.
+  function instrumentVizNav() {
+    document.querySelectorAll('.viz-nav-btn').forEach(a => {
+      if (a.classList.contains('active')) return;     // self-link, no-op
+      a.addEventListener('click', (e) => {
+        const href = a.getAttribute('href');
+        if (!href || href.startsWith('http')) return; // leave absolute / external alone
+        e.preventDefault();
+        try {
+          const s = gather();
+          const b64 = enc(s);
+          // Strip any existing #s=... from the target so we don't double up.
+          const cleanHref = href.split('#')[0];
+          window.location.href = cleanHref + '#' + KEY + '=' + b64;
+        } catch (err) {
+          // Fall back to a plain navigation if anything goes wrong.
+          window.location.href = href;
+        }
+      });
+    });
   }
 
   function mkBtn() {
@@ -479,11 +533,11 @@ setTimeout(function() { resizePlots(); applyGeneFilter(); }, 50);
     document.addEventListener('DOMContentLoaded', () => {
       mkBtn();
       // give explorer JS a beat to wire its own handlers
-      setTimeout(restore, 600);
+      setTimeout(() => { instrumentRecomputeBtns(); instrumentVizNav(); restore(); }, 600);
     });
   } else {
     mkBtn();
-    setTimeout(restore, 600);
+    setTimeout(() => { instrumentRecomputeBtns(); instrumentVizNav(); restore(); }, 600);
   }
 })();
 
