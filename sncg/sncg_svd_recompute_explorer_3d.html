@@ -125,6 +125,21 @@ h2 { margin: 0 0 2px 0; }
                     image-rendering: pixelated; }
 #heatmap-overlay { position: absolute; left: 0; top: 0;
                     width: 100%; height: 100%; pointer-events: none; }
+.celltype-strip-wrap { flex: 0 0 14px; position: relative; margin-top: 2px;
+                        border-top: 1px solid #c0c0c0; background: #fff; }
+#celltype-strip-canvas { position: absolute; left: 0; top: 0;
+                          width: 100%; height: 100%; image-rendering: pixelated; }
+.celltype-order-row { flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
+                       flex-wrap: wrap; padding: 4px 2px 0; font-size: 11px; color: #555; }
+.celltype-order-chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.ct-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px;
+            background: #fff; border: 1px solid #bbb; border-radius: 10px; cursor: grab;
+            font-size: 11px; user-select: none; }
+.ct-chip.dragging { opacity: 0.4; cursor: grabbing; }
+.ct-chip.drop-target { outline: 2px dashed #1f77b4; outline-offset: 1px; }
+.ct-chip-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.celltype-order-reset { font-size: 11px; padding: 1px 6px;
+                         background: #f6f6f6; border: 1px solid #bbb; border-radius: 3px; cursor: pointer; }
 #status, #recompute-status { color: #555; font-size: 12px; }
 .legend { flex: 0 0 auto; font-size: 11px; color: #444; margin-top: 4px; }
 button { font-size: 13px; padding: 4px 10px; }
@@ -235,6 +250,13 @@ working against the new basis.
     <div class="heatmap-canvas-wrap">
       <canvas id="heatmap-canvas"></canvas>
       <canvas id="heatmap-overlay"></canvas>
+    </div>
+    <div class="celltype-strip-wrap"><canvas id="celltype-strip-canvas"></canvas></div>
+    <div id="celltype-order-row" class="celltype-order-row" style="display:none;">
+      <span class="label">Cell-type order:</span>
+      <span id="celltype-order-chips" class="celltype-order-chips"></span>
+      <button id="celltype-order-reset" class="celltype-order-reset"
+              title="Restore the axis-mean order (drop manual rearrangement).">↺ axis-mean</button>
     </div>
   </div>
 </div>
@@ -877,6 +899,8 @@ function sizeLineCanvas() {
 // Cell-ordering state for the heatmap (read by renderHeatmap).
 let heatmapOrderAxis = 0;       // 0=PC1, 1=PC2, 2=PC3
 let heatmapGroupByType = false; // if true, stratify by cell_subtype before sorting
+let celltypeOrder = null;       // when grouping by cell-type: explicit user-set order
+                                 // (null = use axis-mean of subtype). Array of subtype strings.
 
 function renderHeatmap() {
   sizeHeatmapCanvas();
@@ -889,28 +913,41 @@ function renderHeatmap() {
   for (let i = 0; i < cell_active.length; i++) if (cell_active[i]) activeIdx.push(i);
   const axis = heatmapOrderAxis;
   if (heatmapGroupByType) {
-    // Stratify by cell_subtype; order subtype groups by their mean axis value;
-    // sort cells within each subtype by the same axis.
+    // Stratify by cell_subtype; sort subtype groups by mean axis value
+    // (or by celltypeOrder if the user has manually re-arranged them).
     const byType = new Map();
     for (const i of activeIdx) {
       const t = cell_subtype[i];
       if (!byType.has(t)) byType.set(t, []);
       byType.get(t).push(i);
     }
-    const subtypeMean = [];
-    for (const [t, list] of byType) {
-      let s = 0; for (const i of list) s += cell_score[i][axis];
-      subtypeMean.push([t, s / list.length]);
+    let typeOrder;
+    if (celltypeOrder && celltypeOrder.length) {
+      typeOrder = celltypeOrder.filter(t => byType.has(t));
+      // Append any active types not yet in celltypeOrder (new from recompute)
+      for (const t of byType.keys()) {
+        if (!typeOrder.includes(t)) typeOrder.push(t);
+      }
+    } else {
+      const subtypeMean = [];
+      for (const [t, list] of byType) {
+        let s = 0; for (const i of list) s += cell_score[i][axis];
+        subtypeMean.push([t, s / list.length]);
+      }
+      subtypeMean.sort((a, b) => a[1] - b[1]);
+      typeOrder = subtypeMean.map(p => p[0]);
     }
-    subtypeMean.sort((a, b) => a[1] - b[1]);
     activeIdx = [];
-    for (const [t] of subtypeMean) {
+    for (const t of typeOrder) {
       const list = byType.get(t);
       list.sort((a, b) => cell_score[a][axis] - cell_score[b][axis]);
       for (const i of list) activeIdx.push(i);
     }
+    // Stash so the chip row + strip painter use the same order
+    renderHeatmap._typeOrder = typeOrder;
   } else {
     activeIdx.sort((a, b) => cell_score[a][axis] - cell_score[b][axis]);
+    renderHeatmap._typeOrder = null;
   }
   const m = activeIdx.length;
   if (m < 4) {
@@ -1010,6 +1047,11 @@ function renderHeatmap() {
     }
   }
   heatInfo.textContent = '— ' + m + ' cells × ' + nP + ' panel HVG (z-clipped ±' + Z_CLIP + ', smoothing window=' + win + ')';
+  // Paint the cell-type colour strip below the heatmap (one column per cell,
+  // coloured by that cell's subtype). Same column width as the heatmap above.
+  paintCellTypeStrip(activeIdx);
+  // Show/hide the reorder chip row + sync chips when grouping is on.
+  updateCellTypeOrderUI();
   // Save state so the hover overlay can render consistently with this draw.
   heatmapActiveIdx = activeIdx;
   heatmapSmoothWin = win;
@@ -1310,6 +1352,84 @@ document.querySelectorAll('.order-btn').forEach(btn => {
 });
 document.getElementById('group-by-celltype').addEventListener('change', e => {
   heatmapGroupByType = e.target.checked;
+  // Drop any prior manual reorder when toggling off so the next "group by"
+  // starts from axis-mean order again.
+  if (!heatmapGroupByType) celltypeOrder = null;
+  renderHeatmap();
+});
+
+// ---- Cell-type colour strip + reorder chips ------------------------------
+function paintCellTypeStrip(activeIdx) {
+  const cv = document.getElementById('celltype-strip-canvas');
+  if (!cv) return;
+  // Match strip width to heatmap canvas
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = cv.parentElement.clientWidth;
+  const cssH = cv.parentElement.clientHeight || 14;
+  cv.width  = Math.max(1, Math.floor(cssW * dpr));
+  cv.height = Math.max(1, Math.floor(cssH * dpr));
+  cv.style.width  = cssW + 'px';
+  cv.style.height = cssH + 'px';
+  const ctx = cv.getContext('2d', {alpha: false});
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  const W = cv.width, H = cv.height;
+  const m = activeIdx.length;
+  const cellW = W / m;
+  for (let i = 0; i < m; i++) {
+    const t = cell_subtype[activeIdx[i]];
+    ctx.fillStyle = subtype_palette[t] || '#cccccc';
+    ctx.fillRect(i * cellW, 0, cellW + 1, H);
+  }
+}
+
+function updateCellTypeOrderUI() {
+  const row = document.getElementById('celltype-order-row');
+  if (!row) return;
+  if (!heatmapGroupByType) { row.style.display = 'none'; return; }
+  row.style.display = '';
+  const order = renderHeatmap._typeOrder || [];
+  const chipsEl = document.getElementById('celltype-order-chips');
+  chipsEl.innerHTML = '';
+  order.forEach(t => {
+    const chip = document.createElement('span');
+    chip.className = 'ct-chip';
+    chip.draggable = true;
+    chip.dataset.type = t;
+    chip.innerHTML = `<span class="ct-chip-dot" style="background:${subtype_palette[t] || '#ccc'};"></span>${t}`;
+    chipsEl.appendChild(chip);
+  });
+  // HTML5 drag-and-drop reorder
+  let dragSrc = null;
+  chipsEl.querySelectorAll('.ct-chip').forEach(chip => {
+    chip.addEventListener('dragstart', e => {
+      dragSrc = chip; chip.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', chip.dataset.type);
+    });
+    chip.addEventListener('dragend', () => {
+      chip.classList.remove('dragging');
+      chipsEl.querySelectorAll('.ct-chip').forEach(c => c.classList.remove('drop-target'));
+    });
+    chip.addEventListener('dragover', e => {
+      e.preventDefault();
+      if (chip !== dragSrc) chip.classList.add('drop-target');
+    });
+    chip.addEventListener('dragleave', () => chip.classList.remove('drop-target'));
+    chip.addEventListener('drop', e => {
+      e.preventDefault();
+      chip.classList.remove('drop-target');
+      if (!dragSrc || dragSrc === chip) return;
+      // Insert dragSrc before this chip
+      chipsEl.insertBefore(dragSrc, chip);
+      // Commit new order to global state
+      celltypeOrder = Array.from(chipsEl.querySelectorAll('.ct-chip')).map(c => c.dataset.type);
+      renderHeatmap();
+    });
+  });
+}
+document.getElementById('celltype-order-reset').addEventListener('click', () => {
+  celltypeOrder = null;
   renderHeatmap();
 });
 
