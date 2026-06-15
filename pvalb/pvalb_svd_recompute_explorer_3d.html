@@ -243,6 +243,7 @@ working against the new basis.
         <button class="order-btn active" data-axis="0">PC1</button>
         <button class="order-btn" data-axis="1">PC2</button>
         <button class="order-btn" data-axis="2">PC3</button>
+        <button class="order-btn" data-axis="-1" title="Order cells along the first principal embedding axis (= biological pseudotime).">Pseudotime</button>
         <label class="group-by-toggle"><input type="checkbox" id="group-by-celltype"> group by cell type first</label>
       </span>
     </div>
@@ -912,6 +913,11 @@ function renderHeatmap() {
   let activeIdx = [];
   for (let i = 0; i < cell_active.length; i++) if (cell_active[i]) activeIdx.push(i);
   const axis = heatmapOrderAxis;
+  // Pseudotime axis (-1): order along the first principal embedding axis.
+  // For SVD that's PC1; we just project onto cell_score[i][0].
+  const sortKey = (axis === -1)
+    ? (i => cell_score[i][0])
+    : (i => cell_score[i][axis]);
   if (heatmapGroupByType) {
     // Stratify by cell_subtype; sort subtype groups by mean axis value
     // (or by celltypeOrder if the user has manually re-arranged them).
@@ -931,7 +937,7 @@ function renderHeatmap() {
     } else {
       const subtypeMean = [];
       for (const [t, list] of byType) {
-        let s = 0; for (const i of list) s += cell_score[i][axis];
+        let s = 0; for (const i of list) s += sortKey(i);
         subtypeMean.push([t, s / list.length]);
       }
       subtypeMean.sort((a, b) => a[1] - b[1]);
@@ -940,13 +946,13 @@ function renderHeatmap() {
     activeIdx = [];
     for (const t of typeOrder) {
       const list = byType.get(t);
-      list.sort((a, b) => cell_score[a][axis] - cell_score[b][axis]);
+      list.sort((a, b) => sortKey(a) - sortKey(b));
       for (const i of list) activeIdx.push(i);
     }
     // Stash so the chip row + strip painter use the same order
     renderHeatmap._typeOrder = typeOrder;
   } else {
-    activeIdx.sort((a, b) => cell_score[a][axis] - cell_score[b][axis]);
+    activeIdx.sort((a, b) => sortKey(a) - sortKey(b));
     renderHeatmap._typeOrder = null;
   }
   const m = activeIdx.length;

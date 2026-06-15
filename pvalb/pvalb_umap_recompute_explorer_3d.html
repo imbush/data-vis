@@ -246,6 +246,7 @@ working against the new basis.
         <button class="order-btn active" data-axis="0">UMAP1</button>
         <button class="order-btn" data-axis="1">UMAP2</button>
         <button class="order-btn" data-axis="2">UMAP3</button>
+        <button class="order-btn" data-axis="-1" title="Order cells along the first principal embedding axis (= biological pseudotime).">Pseudotime</button>
         <label class="group-by-toggle"><input type="checkbox" id="group-by-celltype"> group by cell type first</label>
       </span>
     </div>
@@ -919,6 +920,9 @@ function renderHeatmap() {
   let activeIdx = [];
   for (let i = 0; i < cell_active.length; i++) if (cell_active[i]) activeIdx.push(i);
   const axis = heatmapOrderAxis;
+  const sortKey = (axis === -1)
+    ? (i => cell_score[i][0])     // pseudotime = first embedding axis (UMAP1)
+    : (i => cell_score[i][axis]);
   if (heatmapGroupByType) {
     const byType = new Map();
     for (const i of activeIdx) {
@@ -926,20 +930,29 @@ function renderHeatmap() {
       if (!byType.has(t)) byType.set(t, []);
       byType.get(t).push(i);
     }
-    const subtypeMean = [];
-    for (const [t, list] of byType) {
-      let s = 0; for (const i of list) s += cell_score[i][axis];
-      subtypeMean.push([t, s / list.length]);
+    let typeOrder;
+    if (celltypeOrder && celltypeOrder.length) {
+      typeOrder = celltypeOrder.filter(t => byType.has(t));
+      for (const t of byType.keys()) if (!typeOrder.includes(t)) typeOrder.push(t);
+    } else {
+      const subtypeMean = [];
+      for (const [t, list] of byType) {
+        let s = 0; for (const i of list) s += sortKey(i);
+        subtypeMean.push([t, s / list.length]);
+      }
+      subtypeMean.sort((a, b) => a[1] - b[1]);
+      typeOrder = subtypeMean.map(p => p[0]);
     }
-    subtypeMean.sort((a, b) => a[1] - b[1]);
     activeIdx = [];
-    for (const [t] of subtypeMean) {
+    for (const t of typeOrder) {
       const list = byType.get(t);
-      list.sort((a, b) => cell_score[a][axis] - cell_score[b][axis]);
+      list.sort((a, b) => sortKey(a) - sortKey(b));
       for (const i of list) activeIdx.push(i);
     }
+    renderHeatmap._typeOrder = typeOrder;
   } else {
-    activeIdx.sort((a, b) => cell_score[a][axis] - cell_score[b][axis]);
+    activeIdx.sort((a, b) => sortKey(a) - sortKey(b));
+    renderHeatmap._typeOrder = null;
   }
   const m = activeIdx.length;
   if (m < 4) {
