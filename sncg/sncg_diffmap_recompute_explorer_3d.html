@@ -145,7 +145,7 @@ re-computed against the new cell DCs. Recompute takes ~1–5 s for a few-hundred
       <button id="qc-counts" class="qc-btn">Counts</button>
       <button id="qc-genes" class="qc-btn">Genes</button>
       <button id="qc-ribo" class="qc-btn">% ribo</button>
-      <button id="qc-sample" class="qc-btn" title="Colour each cell by its donor / GEO sample. Same colour = same sample (batch-effect check).">Sample</button>
+      <button id="qc-region" class="qc-btn" title="Colour each cell by its dissected region (V1 = orange, ALM = purple). Greyed out for single-region cohorts.">Region</button>
       <button id="reset-btn">Reset colours</button>
     </span>
   </div>
@@ -357,33 +357,30 @@ document.getElementById('qc-counts').addEventListener('click', () => colorByQC(q
 document.getElementById('qc-genes').addEventListener('click', () => colorByQC(qc_ngenes, 'genes detected', fmtInt));
 document.getElementById('qc-ribo').addEventListener('click', () => colorByQC(qc_ribo, '% ribosomal', fmtPct));
 
-// Colour by sample (donor / GEO sample). Same donor → same colour.
-function hashSampleColor(s) {
-  if (s == null) return '#cccccc';
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = ((h << 5) - h) + s.charCodeAt(i);
-    h |= 0;
-  }
-  const hue = (Math.abs(h) * 137.508) % 360;
-  return `hsl(${hue.toFixed(0)}, 65%, 52%)`;
-}
-const sampleBtn = document.getElementById('qc-sample');
-if (sampleBtn) {
-  if (typeof cell_donor === 'undefined' || cell_donor == null) {
-    sampleBtn.disabled = true;
-    sampleBtn.title = 'No donor / sample metadata in this cohort cache.';
+// Colour by region (V1 vs ALM). The Tasic and merged V1+ALM cohorts carry
+// `dissected_region` per cell; we paint VISp (V1) orange and ALM purple,
+// and fall back to grey for cells without a region label or for cells
+// excluded by the subtype filter.
+const REGION_COLORS = { 'VISp': '#ff7f0e', 'V1': '#ff7f0e', 'ALM': '#9467bd' };
+const regionBtn = document.getElementById('qc-region');
+if (regionBtn) {
+  const hasRegion = (typeof cell_region !== 'undefined') && cell_region != null
+                    && cell_region.length > 0;
+  // Find unique regions; if only one, the button is informational only.
+  const uniqRegions = hasRegion ? Array.from(new Set(cell_region)) : [];
+  if (!hasRegion) {
+    regionBtn.disabled = true;
+    regionBtn.title = 'No region metadata in this cohort cache.';
   } else {
-    sampleBtn.addEventListener('click', () => {
-      const colors = cell_donor.map((d, i) =>
-        cell_active[i] ? hashSampleColor(d) : '#dddddd');
+    regionBtn.addEventListener('click', () => {
+      const colors = cell_region.map((r, i) =>
+        cell_active[i] ? (REGION_COLORS[r] || '#888888') : '#dddddd');
       Plotly.restyle(cellPlot, {'marker.color': [colors]}, [POINTS_TRACE]);
-      const uniqActive = new Set();
-      for (let i = 0; i < cell_donor.length; i++) {
-        if (cell_active[i]) uniqActive.add(cell_donor[i]);
-      }
-      status.innerHTML = 'Cells coloured by <b>sample</b> (donor / GEO sample · '
-        + uniqActive.size + ' unique in active cells · same colour = same sample).';
+      const swatch = r => `<span style="display:inline-block;width:9px;height:9px;`
+        + `background:${REGION_COLORS[r] || '#888'};margin:0 3px 0 8px;`
+        + `border-radius:50%;vertical-align:middle;"></span>${r}`;
+      status.innerHTML = 'Cells coloured by <b>region</b> ('
+        + uniqRegions.sort().map(swatch).join('') + ').';
     });
   }
 }
@@ -901,7 +898,8 @@ setTimeout(function() { resizePlots(); applyGeneFilter(); }, 50);
   const KEY = 's';
 
   function gather() {
-    const s = { v: 1, subs: {}, btns: {}, inputs: {}, toggles: {} };
+    const s = { v: 1, subs: {}, btns: {}, inputs: {}, toggles: {},
+                recompute: window.__lastRecompute || 'panel' };
     document.querySelectorAll('input[type=checkbox][data-sub]').forEach(cb => {
       s.subs[cb.dataset.sub] = cb.checked ? 1 : 0;
     });
@@ -969,6 +967,20 @@ setTimeout(function() { resizePlots(); applyGeneFilter(); }, 50);
     document.querySelectorAll('input[type=checkbox][data-sub]').forEach(cb => {
       cb.dispatchEvent(new Event('change', { bubbles: true }));
     });
+    // Trigger the explorer's Recompute so the embedding refits to the restored
+    // subtype / region / gene-filter state. Without this the controls show the
+    // shared view but the cell positions still reflect the page's default fit.
+    // Saved state remembers whether a recompute ran and which button was last
+    // used; default is the panel-HVG recompute.
+    const wantRecompute = (s.recompute !== 0);  // default to true
+    if (wantRecompute) {
+      const which = s.recompute === 'genes' ? 'recompute-genes-btn' : 'recompute-btn';
+      const btn = document.getElementById(which) || document.getElementById('recompute-btn');
+      if (btn && !btn.disabled) {
+        // Defer so the change-event-driven state updates above settle first.
+        setTimeout(() => btn.click(), 80);
+      }
+    }
   }
 
   function enc(o) {
@@ -991,6 +1003,16 @@ setTimeout(function() { resizePlots(); applyGeneFilter(); }, 50);
     if (!m) return;
     const s = dec(decodeURIComponent(m[1]));
     if (s) apply(s);
+  }
+
+  // Record which Recompute button was last pressed so a Copy-Link URL captures
+  // it and the restore step can fire the same one.
+  function instrumentRecomputeBtns() {
+    const tag = (which) => () => { window.__lastRecompute = which; };
+    const b1 = document.getElementById('recompute-btn');
+    const b2 = document.getElementById('recompute-genes-btn');
+    if (b1) b1.addEventListener('click', tag('panel'));
+    if (b2) b2.addEventListener('click', tag('genes'));
   }
 
   function mkBtn() {
@@ -1022,11 +1044,11 @@ setTimeout(function() { resizePlots(); applyGeneFilter(); }, 50);
     document.addEventListener('DOMContentLoaded', () => {
       mkBtn();
       // give explorer JS a beat to wire its own handlers
-      setTimeout(restore, 600);
+      setTimeout(() => { instrumentRecomputeBtns(); restore(); }, 600);
     });
   } else {
     mkBtn();
-    setTimeout(restore, 600);
+    setTimeout(() => { instrumentRecomputeBtns(); restore(); }, 600);
   }
 })();
 
