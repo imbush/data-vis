@@ -38,13 +38,15 @@
 <h1>Lab data visualizations</h1>
 <p class="sub">
 Interactive explorers for Tasic 2018 mouse V1 GABAergic interneurons.
-Each cell type has <b>four</b> dual-panel viewers (cells on the left, genes on the right,
-hover to cross-recolour): the <b>archetype</b> tetrahedron (K=4 consensus NMF) and three
-<b>recompute</b> variants — <b>SVD biplot</b>, <b>3D UMAP</b>, and <b>diffusion map</b> —
-that let you pick a subset of subtypes (or just the currently-visible genes) and refit the
-embedding in the browser. The SVD and UMAP recomputes also let you choose a lower rank.
-The SVD recompute adds a live variance-explained bar chart and a heatmap of cells × panel
-HVG ordered by pseudotime (PC1).
+Each cell type has <b>four</b> dual-panel viewers (cells left, genes right, hover to
+cross-recolour): an <b>Archetype</b> tetrahedron (K=4 NMF) plus three <b>recompute</b>
+variants — <b>SVD biplot</b>, <b>3D UMAP</b>, and <b>diffusion map</b> — that refit the
+embedding in the browser on whichever subtypes / genes you select. Every recompute view
+adds a heatmap (cells × panel HVG, ordered by chosen axis or grouped by cell type, with
+a coloured cell-type strip + drag-to-reorder chips when grouped) and live Enrichr GO
+terms per axis. The <b>Sample</b> button colours cells by donor (batch-effect check),
+and the <b>🔗 Copy link</b> button (top-right) encodes every control's state into the
+URL so you can share the exact view you're seeing.
 </p>
 
 <h2>V1 archetype explorers (Tasic 2018)</h2>
@@ -118,10 +120,12 @@ HVG ordered by pseudotime (PC1).
 <a class="card" href="allinhib/">
   <div class="title">All inhibitory →</div>
   <div class="meta">5,687 cells · 60 subtypes · 588 panel (HVG union) + 3,230 broader genes</div>
-  <div class="excl">Lamp5 + Sst + Pvalb + Vip + Sncg + Serpinf1; all subtypes kept, recompute on subset via subclass-grouped checkboxes</div>
+  <div class="excl">Lamp5 + Sst + Pvalb + Vip + Sncg + Serpinf1; all subtypes kept, recompute on subset via subclass-grouped checkboxes. The Archetype slot is a live in-browser NMF recompute (no static archetype HTML for this cohort).</div>
   <div class="links">
-    <a class="svd"  href="allinhib/allinhib_svd_recompute_explorer_3d.html">svd</a>
-    <a class="umap" href="allinhib/allinhib_umap_recompute_explorer_3d.html">umap</a>
+    <a class="archetype" href="allinhib/allinhib_nmf_recompute_explorer_4d.html">archetype (NMF)</a>
+    <a class="svd"       href="allinhib/allinhib_svd_recompute_explorer_3d.html">svd</a>
+    <a class="umap"      href="allinhib/allinhib_umap_recompute_explorer_3d.html">umap</a>
+    <a class="diffmap"   href="allinhib/allinhib_diffmap_recompute_explorer_3d.html">diffmap</a>
   </div>
 </a>
 
