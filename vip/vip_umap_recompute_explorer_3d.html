@@ -350,7 +350,7 @@ function exprToMagma(values) {
   let lo = Infinity, hi = -Infinity;
   for (const v of values) { if (v < lo) lo = v; if (v > hi) hi = v; }
   const range = (hi > lo) ? (hi - lo) : 1;
-  return values.map(v => magma[Math.max(0, Math.min(255, Math.round(255*(v-lo)/range)))]);
+  return Array.from(values, v => magma[Math.max(0, Math.min(255, Math.round(255*(v-lo)/range)))]);
 }
 function loadingToMagma(loadings) {
   return loadings.map(v => magma[Math.round(255 * Math.max(0, Math.min(1, v)))]);
@@ -1493,32 +1493,70 @@ setTimeout(function() { resizePlots(); applyGeneFilter(); renderHeatmap(); clear
 // own recompute).
 const AUTO_RECOMPUTE_DEFAULT = false;
 if (AUTO_RECOMPUTE_DEFAULT && !location.hash.includes('s=')) {
+  // Signal the copy-link overlay so users don't see the full-cohort flash
+  // before the default-subset recompute kicks in.
+  window.__autoRecomputeDefault = true;
   setTimeout(() => {
     const btn = document.getElementById('recompute-btn');
     if (btn && !btn.disabled) btn.click();
-  }, 250);
+  }, 80);
 }
 </script>
 
 <script>
-/* copy-link snippet v2 — patches a "Copy link" button into deployed explorers,
+/* copy-link snippet v3 — patches a "Copy link" button into deployed explorers,
  * AND makes the cross-explorer View: nav-bar carry the current UI state across.
  *
- * Click "Copy link" → serialises the state of every control with an id, every
- * subtype checkbox (data-sub), every active button in a button group, every
- * input/select, plus which Recompute was last fired, into a base64 JSON blob
- * in the URL hash. On load, the hash is parsed, each control is restored,
- * and the last Recompute button is re-fired so the embedding refits.
+ * Click "Copy link" → serialises every UI control into a base64 JSON blob in
+ * the URL hash. On load, the hash is parsed, each control is restored, and
+ * the last Recompute button is re-fired so the embedding refits.
  *
  * Click any View: <other-viz> link → intercept, encode current state, jump
  * to the target HTML with `#s=...` so the new explorer opens in the same
  * subset / region / filter / gene-set you were already looking at.
+ *
+ * v3 also hides the biplots behind a "Loading saved view…" overlay while the
+ * state-restore + auto-recompute runs, so users don't see the full-cohort
+ * fit flash by before the saved subset's recompute kicks in.
  */
 (function() {
   if (window.__copyLinkInstalled) return;
   window.__copyLinkInstalled = true;
 
   const KEY = 's';
+
+  // ---- "Loading saved view…" overlay (kills the full-cohort flash) -------
+  function makeOverlay() {
+    if (document.getElementById('__copylink_overlay')) return;
+    const css = document.createElement('style');
+    css.textContent =
+      '#__copylink_overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.96);'
+      + ' z-index: 99998; display: flex; align-items: center; justify-content: center;'
+      + ' font: 14px ui-sans-serif, -apple-system, sans-serif; color: #444;'
+      + ' transition: opacity .25s ease; }'
+      + '#__copylink_overlay.fading { opacity: 0; }'
+      + '#__copylink_overlay .spin { width: 22px; height: 22px; margin-right: 12px;'
+      + ' border: 2.5px solid #ddd; border-top-color: #1f77b4; border-radius: 50%;'
+      + ' animation: __cl_spin .8s linear infinite; }'
+      + '@keyframes __cl_spin { to { transform: rotate(360deg); } }';
+    document.head.appendChild(css);
+    const ov = document.createElement('div');
+    ov.id = '__copylink_overlay';
+    ov.innerHTML = '<div class="spin"></div>Loading saved view…';
+    document.documentElement.appendChild(ov);
+  }
+  function dropOverlay(delay) {
+    const ov = document.getElementById('__copylink_overlay');
+    if (!ov) return;
+    setTimeout(() => {
+      ov.classList.add('fading');
+      setTimeout(() => ov.remove(), 350);
+    }, delay || 0);
+  }
+  // Decide UP-FRONT whether to show the overlay — before any biplot renders.
+  const _hasHash    = (location.hash || '').indexOf(KEY + '=') >= 0;
+  const _hasDefault = (window.__autoRecomputeDefault === true);
+  if (_hasHash || _hasDefault) makeOverlay();
 
   function gather() {
     const s = { v: 1, subs: {}, btns: {}, inputs: {}, toggles: {},
@@ -1601,9 +1639,13 @@ if (AUTO_RECOMPUTE_DEFAULT && !location.hash.includes('s=')) {
       const btn = document.getElementById(which) || document.getElementById('recompute-btn');
       if (btn && !btn.disabled) {
         // Defer so the change-event-driven state updates above settle first.
-        setTimeout(() => btn.click(), 80);
+        setTimeout(() => btn.click(), 60);
+        // Drop the "Loading saved view…" overlay shortly after recompute finishes.
+        setTimeout(() => dropOverlay(), 1500);
+        return;
       }
     }
+    dropOverlay();   // no recompute needed → reveal immediately
   }
 
   function enc(o) {
@@ -1692,11 +1734,16 @@ if (AUTO_RECOMPUTE_DEFAULT && !location.hash.includes('s=')) {
     document.addEventListener('DOMContentLoaded', () => {
       mkBtn();
       // give explorer JS a beat to wire its own handlers
-      setTimeout(() => { instrumentRecomputeBtns(); instrumentVizNav(); restore(); }, 600);
+      setTimeout(() => { instrumentRecomputeBtns(); instrumentVizNav(); restore(); }, 200);
     });
   } else {
     mkBtn();
-    setTimeout(() => { instrumentRecomputeBtns(); instrumentVizNav(); restore(); }, 600);
+    setTimeout(() => { instrumentRecomputeBtns(); instrumentVizNav(); restore(); }, 200);
+  }
+  // Safety-net: in any path where the overlay was shown, drop it after a max
+  // time so a stalled recompute doesn't trap the user behind a blank page.
+  if (_hasHash || _hasDefault) {
+    setTimeout(() => dropOverlay(), 3000);
   }
 })();
 
