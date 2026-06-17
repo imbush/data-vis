@@ -175,233 +175,6 @@ details summary { cursor: pointer; color: #666; font-size: 12px; }
                        cursor: default; pointer-events: none; }
 
 </style>
-
-<style id="__explorer_redesign">
-/* explorer-redesign v1 — unified visual language with the landing page.
- * Layered on top of each explorer's existing CSS so we don't touch JS or DOM.
- */
-:root {
-  --bg: #f7f5f1;
-  --fg: #1a1a1a;
-  --muted: #555;
-  --line: #d9d2c5;
-  --card: #ffffff;
-  --accent: #1f77b4;
-  --accent-green: #2ca02c;
-  --warm-tint: #faf8f3;
-  --shadow-soft: 0 1px 3px rgba(0,0,0,0.03), 0 1px 2px rgba(0,0,0,0.02);
-}
-
-html, body {
-  background: var(--bg) !important;
-  color: var(--fg) !important;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
-    ui-sans-serif, Inter, Helvetica, Arial, sans-serif !important;
-}
-body { padding: 12px 18px 36px !important; line-height: 1.4 !important; }
-
-h2 {
-  font-size: 22px !important; font-weight: 600 !important;
-  letter-spacing: -0.01em !important; color: var(--fg) !important;
-  margin: 6px 0 10px !important;
-}
-
-/* Tags / hints / intros muted */
-.hint, .sub, .header {
-  color: var(--muted) !important;
-  font-size: 14px !important;
-  line-height: 1.55 !important;
-}
-.hint b { color: var(--fg) !important; }
-
-details > summary { cursor: pointer !important; color: var(--muted) !important;
-                    font-size: 13px !important; padding: 4px 0 !important; }
-details[open] > summary { color: var(--fg) !important; font-weight: 600 !important; }
-
-/* ===== Cards: wrap every major control row + plot block ===== */
-.controls, .heatmap-row, .legend, .row, .viz-stack > .row {
-  background: var(--card) !important;
-  border: 1px solid var(--line) !important;
-  border-radius: 9px !important;
-  box-shadow: var(--shadow-soft);
-}
-.controls { padding: 10px 14px !important; margin-bottom: 8px !important; }
-.controls-row {
-  background: transparent !important; border: none !important; box-shadow: none !important;
-  padding: 4px 0 !important; margin: 2px 0 !important;
-}
-.controls-row + .controls-row { border-top: 1px solid #ece6d6 !important;
-                                 padding-top: 6px !important; margin-top: 6px !important; }
-.heatmap-row { margin-top: 8px !important; padding: 8px !important; }
-
-/* Subtype-checkbox card row visually distinct (warm orange tint already used) */
-.controls-row[style*="background:#fff3e0"] {
-  background: #fdf6e8 !important;
-  border: 1px solid #e8d5a1 !important;
-  border-radius: 7px !important;
-  padding: 6px 10px !important;
-  margin-bottom: 6px !important;
-}
-
-/* ===== Buttons — unified, with primary-action variants ===== */
-button {
-  font-family: inherit !important;
-  background: var(--warm-tint) !important;
-  border: 1px solid var(--line) !important;
-  border-radius: 6px !important;
-  padding: 5px 11px !important;
-  font-size: 12.5px !important;
-  color: var(--fg) !important;
-  cursor: pointer !important;
-  transition: background .12s ease, border-color .12s ease, color .12s ease;
-}
-button:hover:not(:disabled) { background: #efe9d8 !important; border-color: #b8b0a3 !important; }
-button:disabled { opacity: 0.45 !important; cursor: not-allowed !important; }
-
-/* QC colour buttons get a tighter feel */
-button.qc-btn { padding: 4px 9px !important; font-size: 12px !important; }
-
-/* Recompute (primary) — accent-coloured */
-#recompute-btn, #recompute-genes-btn {
-  border-color: var(--accent) !important; color: var(--accent) !important;
-  font-weight: 600 !important;
-}
-#recompute-btn:hover, #recompute-genes-btn:hover {
-  background: var(--accent) !important; color: #fff !important;
-}
-
-/* Heatmap order axis + group-by-celltype */
-.order-btn { font-size: 11.5px !important; padding: 2px 9px !important; border-radius: 5px !important; }
-.order-btn.active { background: var(--accent) !important;
-                     border-color: var(--accent) !important; color: #fff !important; }
-
-/* Gene-set buttons */
-.set-btn { font-size: 11.5px !important; padding: 3px 9px !important; border-radius: 13px !important; }
-.set-btn.active { background: var(--accent) !important; color: #fff !important;
-                  border-color: var(--accent) !important; }
-
-/* ===== Inputs (sliders, text fields, dropdowns) ===== */
-input[type="range"] { accent-color: var(--accent) !important; }
-input[type="text"], input[type="number"], select {
-  font-family: inherit !important;
-  background: #fff !important;
-  border: 1px solid var(--line) !important;
-  border-radius: 5px !important;
-  padding: 4px 8px !important;
-  font-size: 12.5px !important;
-  color: var(--fg) !important;
-}
-
-/* ===== Viz-nav (top of every explorer) ===== */
-.viz-nav { gap: 6px !important; margin: 2px 0 10px !important; }
-.viz-nav-label { color: var(--muted) !important; font-size: 11.5px !important;
-                  text-transform: uppercase !important; letter-spacing: 0.06em !important; }
-.viz-nav-btn {
-  font-family: inherit !important;
-  background: #fff !important; color: var(--fg) !important;
-  border: 1px solid var(--line) !important;
-  border-radius: 7px !important;
-  padding: 5px 12px !important;
-  font-size: 12.5px !important; font-weight: 500 !important;
-  text-decoration: none !important;
-}
-.viz-nav-btn:hover:not(.active) { background: #f0eee8 !important; }
-.viz-nav-btn.active {
-  background: var(--accent-green) !important;
-  border-color: var(--accent-green) !important;
-  color: #fff !important; font-weight: 600 !important;
-}
-
-/* ===== Subtype-group cards ===== */
-.subt-group {
-  background: var(--warm-tint) !important;
-  border-radius: 6px !important;
-  padding: 4px 8px !important;
-  border: 1px solid #e8e0cc !important;
-}
-.subt-group-head { font-weight: 600 !important; color: var(--fg) !important; }
-.subt-chk { background: transparent !important; padding: 1px 3px !important;
-            border-radius: 3px !important; }
-.subt-chk:hover { background: #fff !important; }
-.grp-toggle { font-size: 10.5px !important; padding: 1px 6px !important; }
-
-/* ===== Heatmap layout — slim, restful ===== */
-.heatmap-caption { color: var(--muted) !important; font-size: 12px !important; }
-.heatmap-controls .label { color: var(--muted) !important;
-                            font-size: 11px !important;
-                            text-transform: uppercase !important;
-                            letter-spacing: 0.05em !important; }
-.celltype-order-row { background: var(--warm-tint) !important;
-                       border-radius: 5px !important; padding: 4px 8px !important;
-                       border: 1px solid #e8e0cc !important; }
-
-/* ===== Plotly plot containers — let them blend into card backgrounds ===== */
-.plotly { background: transparent !important; }
-.js-plotly-plot { background: transparent !important; }
-
-/* ===== Status text — calmly muted ===== */
-#status, #recompute-status {
-  color: var(--muted) !important;
-  font-size: 12px !important;
-  background: var(--warm-tint) !important;
-  padding: 4px 9px !important;
-  border-radius: 5px !important;
-  border: 1px solid #e8e0cc !important;
-}
-
-/* ===== Legend ===== */
-.legend {
-  padding: 6px 10px !important;
-  font-size: 11px !important;
-  color: var(--muted) !important;
-  margin-top: 6px !important;
-  background: var(--warm-tint) !important;
-}
-
-/* ===== Lineage shortcut buttons (+MGE / +CGE / +LGE) ===== */
-button.lin-btn {
-  font-family: inherit !important;
-  background: #eef5ea !important;
-  border: 1px solid #b0c4a0 !important;
-  color: #2e7d32 !important;
-  font-size: 11.5px !important;
-  font-weight: 600 !important;
-  padding: 3px 9px !important;
-  border-radius: 5px !important;
-}
-button.lin-btn:hover { background: #d8e8d0 !important; }
-.lin-sep { color: #b8b0a3 !important; padding: 0 4px !important; font-size: 11px !important; }
-
-/* ===== Cell-type strip + reorder chips ===== */
-.ct-chip {
-  background: #fff !important;
-  border: 1px solid var(--line) !important;
-  border-radius: 10px !important;
-  font-size: 11px !important;
-}
-.ct-chip:hover { background: var(--warm-tint) !important; }
-
-/* ===== Top-right "Copy link" — give it the same buttoned look ===== */
-#copy-link-btn {
-  background: #fff !important;
-  border: 1px solid var(--accent) !important;
-  color: var(--accent) !important;
-  font-family: inherit !important;
-  font-weight: 500 !important;
-  border-radius: 6px !important;
-  padding: 5px 11px !important;
-  font-size: 12.5px !important;
-}
-#copy-link-btn:hover { background: var(--accent) !important; color: #fff !important; }
-
-/* ===== code font ===== */
-code {
-  background: #ece6d6 !important; padding: 1px 5px !important; border-radius: 3px !important;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
-  font-size: 12px !important;
-}
-
-</style>
 </head>
 <body>
 <h2>Lamp5 SVD biplot — subtype-subset recompute</h2>
@@ -1732,7 +1505,7 @@ if (AUTO_RECOMPUTE_DEFAULT && !location.hash.includes('s=')) {
 </script>
 
 <script>
-/* copy-link snippet v3 — patches a "Copy link" button into deployed explorers,
+/* copy-link snippet v4 — patches a "Copy link" button into deployed explorers,
  * AND makes the cross-explorer View: nav-bar carry the current UI state across.
  *
  * Click "Copy link" → serialises every UI control into a base64 JSON blob in
@@ -1787,16 +1560,20 @@ if (AUTO_RECOMPUTE_DEFAULT && !location.hash.includes('s=')) {
   if (_hasHash || _hasDefault) makeOverlay();
 
   function gather() {
-    const s = { v: 1, subs: {}, btns: {}, inputs: {}, toggles: {},
+    const s = { v: 2, subs: {}, btns: {}, inputs: {}, toggles: {},
                 recompute: window.__lastRecompute || 'panel' };
     document.querySelectorAll('input[type=checkbox][data-sub]').forEach(cb => {
       s.subs[cb.dataset.sub] = cb.checked ? 1 : 0;
     });
-    // single-active button groups — collect by parent container class
+    // single-active button groups — collect by parent container class.
+    // The .age-toggle parent matches "toggle" but holds a MULTI-active
+    // set of chips, so we skip it here and capture it explicitly below.
     document.querySelectorAll('button.active').forEach(btn => {
       const p = btn.parentElement;
       if (!p) return;
-      const cls = (p.className || '').split(' ').filter(c =>
+      const pc = p.className || '';
+      if (/\bage-toggle\b/.test(pc)) return;
+      const cls = pc.split(' ').filter(c =>
         /toggle|btns|btn-row|axis-row|order-row|grp-row|controls/.test(c))[0];
       if (!cls) return;
       const val = btn.dataset.region || btn.dataset.axis ||
@@ -1810,6 +1587,21 @@ if (AUTO_RECOMPUTE_DEFAULT && !location.hash.includes('s=')) {
       if (el.type === 'checkbox') s.toggles[el.id] = el.checked ? 1 : 0;
       else if (el.value !== undefined) s.inputs[el.id] = el.value;
     });
+    // Multi-state age chips (.age-toggle .ag-btn.active) — pure JS state in
+    // window.activeAges, not captured by the single-active button loop above.
+    try {
+      if (typeof activeAges !== 'undefined' && activeAges instanceof Set) {
+        s.activeAges = Array.from(activeAges);
+      }
+    } catch (e) {}
+    // Heatmap cell-type drag-reorder — pure JS state in window.celltypeOrder
+    // (no .active class to scrape from the DOM).
+    try {
+      if (typeof celltypeOrder !== 'undefined' && celltypeOrder &&
+          celltypeOrder.length) {
+        s.celltypeOrder = celltypeOrder.slice();
+      }
+    } catch (e) {}
     return s;
   }
 
@@ -1851,6 +1643,29 @@ if (AUTO_RECOMPUTE_DEFAULT && !location.hash.includes('s=')) {
           if (v === val) b.click();
         });
       });
+    }
+    // Multi-state age chips: replace the Set's contents and reconcile the
+    // .active class on every chip so the visual state matches.
+    if (s.activeAges && Array.isArray(s.activeAges)) {
+      try {
+        if (typeof activeAges !== 'undefined' && activeAges instanceof Set) {
+          activeAges.clear();
+          s.activeAges.forEach(a => activeAges.add(a));
+          document.querySelectorAll('.age-toggle .ag-btn').forEach(b => {
+            const a = b.dataset.age;
+            if (a == null) return;
+            if (activeAges.has(a)) b.classList.add('active');
+            else b.classList.remove('active');
+          });
+        }
+      } catch (e) {}
+    }
+    // Heatmap cell-type drag-reorder: restore before the change-event-driven
+    // re-render below picks it up to lay out the chips.
+    if (s.celltypeOrder && Array.isArray(s.celltypeOrder)) {
+      try {
+        if (typeof celltypeOrder !== 'undefined') celltypeOrder = s.celltypeOrder.slice();
+      } catch (e) {}
     }
     // fire change on every subtype checkbox so dependent renders run
     document.querySelectorAll('input[type=checkbox][data-sub]').forEach(cb => {
@@ -1973,75 +1788,6 @@ if (AUTO_RECOMPUTE_DEFAULT && !location.hash.includes('s=')) {
   if (_hasHash || _hasDefault) {
     setTimeout(() => dropOverlay(), 3000);
   }
-})();
-
-</script>
-
-<script id="__explorer_redesign_js">
-/* explorer-redesign v1 — defer the heavy heatmap canvas paint until the user
- * has actually seen the biplots, so first-paint is fast even on AllInhib /
- * AllExc / DevInhib (5k-8k cells × 3k+ genes). Idempotent. */
-(function() {
-  if (window.__explorerRedesignInstalled) return;
-  window.__explorerRedesignInstalled = true;
-
-  // The build scripts already schedule renderHeatmap() inside a 80 ms
-  // setTimeout. We intercept window.renderHeatmap once it's defined and only
-  // let it run on the first scroll-near-visible event OR after a 1.5 s grace
-  // period — whichever comes first — so the cell + gene biplots get painted
-  // first. After the initial deferred call, renderHeatmap behaves normally
-  // (every later subtype/recompute call repaints immediately).
-  function patchRenderHeatmap() {
-    if (typeof window.renderHeatmap !== 'function') {
-      // The heatmap isn't a window-level function — bail. Diffmap recompute
-      // has no heatmap, and the static archetype script doesn't either.
-      return;
-    }
-    if (window.__heatmapDeferPatched) return;
-    window.__heatmapDeferPatched = true;
-    const original = window.renderHeatmap;
-    let firstRunDone = false;
-    let pending = null;
-    function actualRun() {
-      firstRunDone = true;
-      if (pending) { clearTimeout(pending); pending = null; }
-      return original.apply(this, arguments);
-    }
-    window.renderHeatmap = function() {
-      if (firstRunDone) return actualRun.apply(this, arguments);
-      // Defer the first call. Run on whichever comes first:
-      // (a) the heatmap-row scrolling near the viewport
-      // (b) 1.5 s grace period
-      // (c) the user touching any heatmap-related control
-      const args = arguments;
-      pending = setTimeout(() => actualRun.apply(this, args), 1500);
-      const heatRow = document.querySelector('.heatmap-row');
-      if (heatRow && 'IntersectionObserver' in window) {
-        const io = new IntersectionObserver(entries => {
-          if (entries.some(e => e.isIntersecting)) {
-            io.disconnect();
-            if (!firstRunDone) actualRun.apply(this, args);
-          }
-        }, { rootMargin: '50px' });
-        io.observe(heatRow);
-      }
-      // Any click on heatmap controls forces the first paint right away.
-      document.querySelectorAll('.order-btn, #group-by-celltype, #celltype-order-reset')
-        .forEach(el => el.addEventListener('click', () => {
-          if (!firstRunDone) actualRun.apply(this, args);
-        }, { once: true }));
-    };
-  }
-  // Try multiple times — the explorer JS runs after the snippet is appended
-  // but defines renderHeatmap inside its own closure, so we look for the
-  // global. If not found, retry quickly.
-  let tries = 0;
-  const it = setInterval(() => {
-    if (typeof window.renderHeatmap === 'function' || tries++ > 40) {
-      clearInterval(it);
-      patchRenderHeatmap();
-    }
-  }, 50);
 })();
 
 </script>

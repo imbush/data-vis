@@ -121,6 +121,8 @@
   <div class="note">
     Initial view loads a 12-subtype curated starter set (Sst Myh8 Fibin · Chrna2/Hpse/Calb2/Tac1
     pairs · Pvalb Tpbg + Reln pairs); tick more boxes + click Recompute to expand.
+    <i>Note:</i> this starter is intentionally Sst/Pvalb-only — the embedding only spans all six
+    subclasses after you tick additional rows and Recompute.
   </div>
   <div class="viz-row">
     <a class="viz-btn archetype" href="allinhib/allinhib_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
@@ -189,7 +191,7 @@
 <div class="cohort allinhib">
   <div class="cohort-head">
     <span class="cohort-name">Developing V1 — all inhibitory, E11.5 → P56</span>
-    <span class="cohort-meta">~8,100 cells (stratified sample) · 33 ages · 8 subclasses · ~30 fine clusters · Gao 2025</span>
+    <span class="cohort-meta">~8,100 cells (stratified sample) · 33 ages · 8 subclasses · 61 fine clusters · Gao 2025</span>
   </div>
   <div class="note">
     Gao <i>et al.</i> 2025 mouse visual cortex developmental atlas — every Tasic-equivalent
@@ -197,6 +199,9 @@
     at Gao's <i>cluster</i>-level resolution. Stratified to ~8,100 cells. Top-row <b>Age</b> chips
     (green) filter to specific developmental stages; the <b>Age</b> QC-colour button paints cells
     along a viridis gradient (E negative, P positive). Hovering a cell reads out its subtype + age.
+    <br><i>Caveats:</i> HVG list is the union of the Tasic-2018 adult per-subclass HVGs (early
+    developmental cells use an adult-biased gene set); X is ABC log₂(x+1), so the Metabolism +
+    Regress-out controls are disabled here.
   </div>
   <div class="viz-row">
     <a class="viz-btn archetype" href="devinhib/devinhib_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype (NMF recompute)</a>
@@ -243,8 +248,8 @@
     The slider hides every gene above a |r| threshold (default 1.0 = off). Most ribo-
     correlated genes are uniform-expression housekeeping (median subclass-CV 0.027 vs
     0.477 for the rest of the transcriptome); excluding them removes a technical axis
-    without losing biological structure. The "Regress out %ribo" toggle (AllInhib local
-    only) is the projection-based alternative — see the spatial / AllInhib views.<br><br>
+    without losing biological structure. The "Regress out %ribo" toggle is the projection-
+    based alternative — present in every recompute view.<br><br>
     <b>Sharing.</b> Click <code>🔗 Copy link</code> top-right and the URL hash encodes every
     control. Sharing a URL reproduces the exact view; the page auto-fires the same
     Recompute you last clicked. Clicking a <code>View:</code> button at the top of an explorer
