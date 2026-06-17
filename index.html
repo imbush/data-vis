@@ -94,122 +94,45 @@
 <div class="wrap">
 
 <header>
-  <h1>Tasic 2018 cortex explorers</h1>
-  <div class="tag">Mouse VISp + ALM · scRNA-seq subtype embeddings + spatial</div>
+  <h1>Mouse cortex single-cell explorers</h1>
+  <div class="tag">Adult VISp + ALM (Tasic 2018) · Developmental V1 atlas (Gao 2025) · Zhuang ABCA MERFISH spatial</div>
   <p class="lede">
-    Interactive explorers for the Tasic 2018 mouse primary-visual / anterior-lateral-motor
-    cortex single-cell RNA-seq dataset (Tasic <i>et al.</i>, Nature 2018). Each cohort has
-    multiple dual-panel viewers — cells on the left, genes on the right, hover to
-    cross-recolour — that <b>refit the embedding in your browser</b> on whichever subtypes
-    or genes you select. Pick a panel below.
+    Two complementary cortex datasets, plus a spatial companion. Every cohort below is a
+    dual-panel browser viewer — cells left, genes right, hover to cross-recolour — that
+    <b>refits its embedding in your browser</b> on whichever subtypes, genes, regions,
+    or ages you select. Pick a panel.
   </p>
   <ul class="features">
-    <li>4 dim-reduction methods (NMF tetrahedron, SVD biplot, 3D UMAP, diffusion map)</li>
-    <li>Subtype-group checkboxes · region toggle · gene-set filters · metabolism slider</li>
-    <li>Live Enrichr GO terms per axis · drag-to-reorder cell-type strip on the heatmap</li>
-    <li>🔗 <b>Copy-link</b> URLs · view-switching carries the current state across</li>
+    <li>4 dimensionality-reduction methods (NMF tetrahedron, SVD biplot, 3D UMAP, diffusion map)</li>
+    <li>Subtype-group checkboxes · region toggle (V1 vs ALM) · developmental-age chips · gene-set filter</li>
+    <li>Metabolism slider hides %ribo-correlated housekeeping genes · drag-to-reorder cell-type strip</li>
+    <li>🔗 <b>Copy-link</b> URLs · view-switching carries the current state across · Allen CCFv3 region outlines in the spatial view</li>
   </ul>
 </header>
 
-<h2>GABAergic interneurons (per subclass)</h2>
-<div class="cohorts">
-
-<div class="cohort lamp5">
-  <div class="cohort-head">
-    <span class="cohort-name">Lamp5</span>
-    <span class="cohort-meta"><b>989</b> cells · 144 panel + 3,297 imputed genes · silhouette 0.997</span>
-  </div>
-  <div class="note">Cache outliers excluded: Lamp5 Lhx6, Lamp5 Krt73; QC drop: F2S4_171122_010_H01.</div>
-  <div class="viz-row">
-    <a class="viz-btn archetype" href="lamp5/lamp5_archetype_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
-    <a class="viz-btn svd"       href="lamp5/lamp5_svd_recompute_explorer_3d.html"><span class="glyph">◆</span> SVD biplot</a>
-    <a class="viz-btn umap"      href="lamp5/lamp5_umap_recompute_explorer_3d.html"><span class="glyph">●</span> 3D UMAP</a>
-    <a class="viz-btn diffmap"   href="lamp5/lamp5_diffmap_recompute_explorer_3d.html"><span class="glyph">◐</span> Diffusion map</a>
-  </div>
-</div>
-
-<div class="cohort sst">
-  <div class="cohort-head">
-    <span class="cohort-name">Sst</span>
-    <span class="cohort-meta"><b>1,511</b> cells · 150 panel + 3,293 imputed genes · silhouette 0.746</span>
-  </div>
-  <div class="note">Cache outliers excluded: Sst Chodl (long-projecting).</div>
-  <div class="viz-row">
-    <a class="viz-btn archetype" href="sst/sst_archetype_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
-    <a class="viz-btn svd"       href="sst/sst_svd_recompute_explorer_3d.html"><span class="glyph">◆</span> SVD biplot</a>
-    <a class="viz-btn umap"      href="sst/sst_umap_recompute_explorer_3d.html"><span class="glyph">●</span> 3D UMAP</a>
-    <a class="viz-btn diffmap"   href="sst/sst_diffmap_recompute_explorer_3d.html"><span class="glyph">◐</span> Diffusion map</a>
-  </div>
-</div>
-
-<div class="cohort pvalb">
-  <div class="cohort-head">
-    <span class="cohort-name">Pvalb</span>
-    <span class="cohort-meta"><b>1,088</b> cells · 150 panel + 3,298 imputed genes · silhouette 0.813</span>
-  </div>
-  <div class="note">Cache outliers excluded: Pvalb Vipr2 (chandelier), Pvalb Gabrg1; QC drop: F2S4_170406_018_D01.</div>
-  <div class="viz-row">
-    <a class="viz-btn archetype" href="pvalb/pvalb_archetype_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
-    <a class="viz-btn svd"       href="pvalb/pvalb_svd_recompute_explorer_3d.html"><span class="glyph">◆</span> SVD biplot</a>
-    <a class="viz-btn umap"      href="pvalb/pvalb_umap_recompute_explorer_3d.html"><span class="glyph">●</span> 3D UMAP</a>
-    <a class="viz-btn diffmap"   href="pvalb/pvalb_diffmap_recompute_explorer_3d.html"><span class="glyph">◐</span> Diffusion map</a>
-  </div>
-</div>
-
-<div class="cohort vip">
-  <div class="cohort-head">
-    <span class="cohort-name">Vip</span>
-    <span class="cohort-meta"><b>1,690</b> cells · 169 panel + 3,292 imputed genes · silhouette 0.999</span>
-  </div>
-  <div class="note">No subtype-level outliers excluded.</div>
-  <div class="viz-row">
-    <a class="viz-btn archetype" href="vip/vip_archetype_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
-    <a class="viz-btn svd"       href="vip/vip_svd_recompute_explorer_3d.html"><span class="glyph">◆</span> SVD biplot</a>
-    <a class="viz-btn umap"      href="vip/vip_umap_recompute_explorer_3d.html"><span class="glyph">●</span> 3D UMAP</a>
-    <a class="viz-btn diffmap"   href="vip/vip_diffmap_recompute_explorer_3d.html"><span class="glyph">◐</span> Diffusion map</a>
-  </div>
-</div>
-
-<div class="cohort sncg">
-  <div class="cohort-head">
-    <span class="cohort-name">Sncg + Serpinf1</span>
-    <span class="cohort-meta"><b>151</b> cells · 299 panel + 3,238 imputed genes · silhouette 0.998</span>
-  </div>
-  <div class="note">Includes both Sncg and Serpinf1 subclasses — small cohort, fastest to recompute.</div>
-  <div class="viz-row">
-    <a class="viz-btn archetype" href="sncg/sncg_archetype_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
-    <a class="viz-btn svd"       href="sncg/sncg_svd_recompute_explorer_3d.html"><span class="glyph">◆</span> SVD biplot</a>
-    <a class="viz-btn umap"      href="sncg/sncg_umap_recompute_explorer_3d.html"><span class="glyph">●</span> 3D UMAP</a>
-    <a class="viz-btn diffmap"   href="sncg/sncg_diffmap_recompute_explorer_3d.html"><span class="glyph">◐</span> Diffusion map</a>
-  </div>
-</div>
-
-</div>
-
-<h2>Pooled cohorts</h2>
+<h2>Tasic 2018 V1 &amp; ALM Atlas</h2>
 <div class="cohorts">
 
 <div class="cohort allinhib">
   <div class="cohort-head">
-    <span class="cohort-name">All inhibitory (GABA)</span>
-    <span class="cohort-meta"><b>5,687</b> cells · 60 subtypes · 588 panel + 3,230 imputed genes</span>
+    <span class="cohort-name">V1 — All inhibitory (GABA)</span>
+    <span class="cohort-meta"><b>5,687</b> cells · 60 subtypes · Lamp5 + Sst + Pvalb + Vip + Sncg + Serpinf1</span>
   </div>
   <div class="note">
-    Lamp5 + Sst + Pvalb + Vip + Sncg + Serpinf1. Initial view loads a 12-subtype curated
-    starter set (Sst Myh8 Fibin · Chrna2/Hpse/Calb2/Tac1 pairs · Pvalb Tpbg + Reln pairs)
-    so the page lands on the subset's own basis. Tick more boxes + click Recompute to expand.
+    Initial view loads a 12-subtype curated starter set (Sst Myh8 Fibin · Chrna2/Hpse/Calb2/Tac1
+    pairs · Pvalb Tpbg + Reln pairs); tick more boxes + click Recompute to expand.
   </div>
   <div class="viz-row">
-    <a class="viz-btn archetype" href="allinhib/allinhib_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype (NMF recompute)</a>
-    <a class="viz-btn svd"       href="allinhib/allinhib_svd_recompute_explorer_3d.html"><span class="glyph">◆</span> SVD biplot</a>
-    <a class="viz-btn umap"      href="allinhib/allinhib_umap_recompute_explorer_3d.html"><span class="glyph">●</span> 3D UMAP</a>
-    <a class="viz-btn diffmap"   href="allinhib/allinhib_diffmap_recompute_explorer_3d.html"><span class="glyph">◐</span> Diffusion map</a>
+    <a class="viz-btn archetype" href="allinhib/allinhib_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
+    <a class="viz-btn svd"       href="allinhib/allinhib_svd_recompute_explorer_3d.html"><span class="glyph">◆</span> SVD</a>
+    <a class="viz-btn umap"      href="allinhib/allinhib_umap_recompute_explorer_3d.html"><span class="glyph">●</span> UMAP</a>
+    <a class="viz-btn diffmap"   href="allinhib/allinhib_diffmap_recompute_explorer_3d.html"><span class="glyph">◐</span> Diffmap</a>
   </div>
 </div>
 
 <div class="cohort allexc">
   <div class="cohort-head">
-    <span class="cohort-name">All excitatory (Glutamatergic)</span>
+    <span class="cohort-name">V1 — All excitatory (Glutamatergic)</span>
     <span class="cohort-meta">L2/3 IT · L4 · L5 IT · L5 PT · L6 IT · L6 CT · L6b · NP · CR</span>
   </div>
   <div class="note">
@@ -217,10 +140,44 @@
     there's no pre-built per-subclass cache for the excitatory cohort.
   </div>
   <div class="viz-row">
-    <a class="viz-btn archetype" href="allexc/allexc_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype (NMF recompute)</a>
-    <a class="viz-btn svd"       href="allexc/allexc_svd_recompute_explorer_3d.html"><span class="glyph">◆</span> SVD biplot</a>
-    <a class="viz-btn umap"      href="allexc/allexc_umap_recompute_explorer_3d.html"><span class="glyph">●</span> 3D UMAP</a>
-    <a class="viz-btn diffmap"   href="allexc/allexc_diffmap_recompute_explorer_3d.html"><span class="glyph">◐</span> Diffusion map</a>
+    <a class="viz-btn archetype" href="allexc/allexc_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
+    <a class="viz-btn svd"       href="allexc/allexc_svd_recompute_explorer_3d.html"><span class="glyph">◆</span> SVD</a>
+    <a class="viz-btn umap"      href="allexc/allexc_umap_recompute_explorer_3d.html"><span class="glyph">●</span> UMAP</a>
+    <a class="viz-btn diffmap"   href="allexc/allexc_diffmap_recompute_explorer_3d.html"><span class="glyph">◐</span> Diffmap</a>
+  </div>
+</div>
+
+<div class="cohort allinhib">
+  <div class="cohort-head">
+    <span class="cohort-name">V1 + ALM — All inhibitory (separate)</span>
+    <span class="cohort-meta">V1 + ALM merged · region toggle filters V1 vs ALM vs both · larger HTML (~70 MB)</span>
+  </div>
+  <div class="note">
+    Same Tasic-2018 inhibitory cells, but pooled across V1 (VISp) and ALM dissections.
+    Heavier to load — use the Region: chips at the top to refit on V1 only, ALM only, or both.
+  </div>
+  <div class="viz-row">
+    <a class="viz-btn archetype" href="allinhib_v1alm/allinhib_v1alm_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
+    <a class="viz-btn svd"       href="allinhib_v1alm/allinhib_v1alm_svd_recompute_explorer_3d.html"><span class="glyph">◆</span> SVD</a>
+    <a class="viz-btn umap"      href="allinhib_v1alm/allinhib_v1alm_umap_recompute_explorer_3d.html"><span class="glyph">●</span> UMAP</a>
+    <a class="viz-btn diffmap"   href="allinhib_v1alm/allinhib_v1alm_diffmap_recompute_explorer_3d.html"><span class="glyph">◐</span> Diffmap</a>
+  </div>
+</div>
+
+<div class="cohort allexc">
+  <div class="cohort-head">
+    <span class="cohort-name">V1 + ALM — All excitatory (separate)</span>
+    <span class="cohort-meta">V1 + ALM merged · region toggle filters V1 vs ALM vs both · larger HTML (~70 MB)</span>
+  </div>
+  <div class="note">
+    Same Tasic-2018 excitatory projection layers across both V1 (VISp) and ALM. Region
+    chips at the top to refit on either area or both.
+  </div>
+  <div class="viz-row">
+    <a class="viz-btn archetype" href="allexc_v1alm/allexc_v1alm_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
+    <a class="viz-btn svd"       href="allexc_v1alm/allexc_v1alm_svd_recompute_explorer_3d.html"><span class="glyph">◆</span> SVD</a>
+    <a class="viz-btn umap"      href="allexc_v1alm/allexc_v1alm_umap_recompute_explorer_3d.html"><span class="glyph">●</span> UMAP</a>
+    <a class="viz-btn diffmap"   href="allexc_v1alm/allexc_v1alm_diffmap_recompute_explorer_3d.html"><span class="glyph">◐</span> Diffmap</a>
   </div>
 </div>
 
@@ -232,15 +189,14 @@
 <div class="cohort allinhib">
   <div class="cohort-head">
     <span class="cohort-name">Developing V1 — all inhibitory, E11.5 → P56</span>
-    <span class="cohort-meta">~8,100 cells (stratified sample) · 33 ages · 8 GABA subclasses · Gao 2025</span>
+    <span class="cohort-meta">~8,100 cells (stratified sample) · 33 ages · 8 subclasses · ~30 fine clusters · Gao 2025</span>
   </div>
   <div class="note">
     Gao <i>et al.</i> 2025 mouse visual cortex developmental atlas — every Tasic-equivalent
-    GABA subclass plus dev-only <b>Lamp5 Lhx6</b>, <b>Pvalb chandelier</b>, <b>Sst Chodl</b>.
-    The 48k full cohort is stratified-sampled to ~8,100 cells (each age × subclass capped at
-    ~40) so the HTML is browser-friendly. New <b>Age</b> button in the QC-colour row paints
-    cells along a viridis gradient (E days encoded as negative, P days as positive); embedding
-    axes usually capture developmental time as PC1.
+    GABA subclass plus dev-only <b>Lamp5 Lhx6</b>, <b>Pvalb chandelier</b>, <b>Sst Chodl</b>,
+    at Gao's <i>cluster</i>-level resolution. Stratified to ~8,100 cells. Top-row <b>Age</b> chips
+    (green) filter to specific developmental stages; the <b>Age</b> QC-colour button paints cells
+    along a viridis gradient (E negative, P positive). Hovering a cell reads out its subtype + age.
   </div>
   <div class="viz-row">
     <a class="viz-btn archetype" href="devinhib/devinhib_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype (NMF recompute)</a>
