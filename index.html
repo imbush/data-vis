@@ -188,26 +188,23 @@
 <h2>Developmental atlas (all ages)</h2>
 <div class="cohorts">
 
-<div class="cohort allinhib">
+<div class="cohort allinhib" style="opacity:0.85;">
   <div class="cohort-head">
-    <span class="cohort-name">Developing V1 — all inhibitory, E11.5 → P56</span>
-    <span class="cohort-meta">~8,100 cells (stratified sample) · 33 ages · 8 subclasses · 61 fine clusters · Gao 2025</span>
+    <span class="cohort-name">Developing V1 — all inhibitory, E11.5 → P56 <span style="font-size:11px; font-weight:500; color:#a0522d; background:#f4ecdc; padding:2px 7px; border-radius:8px; margin-left:6px;">local only</span></span>
+    <span class="cohort-meta">~56,000 cells (full Gao 2025 inhibitory atlas) · 33 ages · 8 subclasses · 61 fine clusters</span>
   </div>
   <div class="note">
     Gao <i>et al.</i> 2025 mouse visual cortex developmental atlas — every Tasic-equivalent
     GABA subclass plus dev-only <b>Lamp5 Lhx6</b>, <b>Pvalb chandelier</b>, <b>Sst Chodl</b>,
-    at Gao's <i>cluster</i>-level resolution. Stratified to ~8,100 cells. Top-row <b>Age</b> chips
-    (green) filter to specific developmental stages; the <b>Age</b> QC-colour button paints cells
-    along a viridis gradient (E negative, P positive). Hovering a cell reads out its subtype + age.
+    at Gao's <i>cluster</i>-level resolution. Top-row <b>Age</b> chips (green) filter to specific
+    developmental stages; the <b>Age</b> QC-colour button paints cells along a viridis gradient
+    (E negative, P positive). Hovering a cell reads out its subtype + age.
+    <br><b>Not hosted on GitHub.</b> The full 56k-cell HTMLs are ~300 MB each, well past
+    GitHub's 100 MB per-file limit. Build locally and open the file in your browser:
+    <code>sequencing/tasic2018_v1_merfish/notebooks/devinhib_{nmf,svd,umap,diffmap}_recompute_explorer_*.html</code>.
     <br><i>Caveats:</i> HVG list is the union of the Tasic-2018 adult per-subclass HVGs (early
     developmental cells use an adult-biased gene set); X is ABC log₂(x+1), so the Metabolism +
     Regress-out controls are disabled here.
-  </div>
-  <div class="viz-row">
-    <a class="viz-btn archetype" href="devinhib/devinhib_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype (NMF recompute)</a>
-    <a class="viz-btn svd"       href="devinhib/devinhib_svd_recompute_explorer_3d.html"><span class="glyph">◆</span> SVD biplot</a>
-    <a class="viz-btn umap"      href="devinhib/devinhib_umap_recompute_explorer_3d.html"><span class="glyph">●</span> 3D UMAP</a>
-    <a class="viz-btn diffmap"   href="devinhib/devinhib_diffmap_recompute_explorer_3d.html"><span class="glyph">◐</span> Diffusion map</a>
   </div>
 </div>
 
