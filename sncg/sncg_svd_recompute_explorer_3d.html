@@ -1837,5 +1837,59 @@ if (AUTO_RECOMPUTE_DEFAULT && !location.hash.includes('s=')) {
 })();
 
 </script>
+
+<script>
+// center-fix v1 — keep the 3D plots centred + responsive on all viewports.
+(function(){
+  function plots() {
+    return [
+      (typeof cellPlot !== 'undefined') ? cellPlot : null,
+      (typeof genePlot !== 'undefined') ? genePlot : null,
+    ].filter(Boolean);
+  }
+  function recenter() {
+    const fix = {
+      'scene.aspectmode':  'cube',
+      'scene.aspectratio': {x: 1, y: 1, z: 1},
+      'scene.camera.center': {x: 0, y: 0, z: 0},
+    };
+    plots().forEach(p => {
+      try { Plotly.relayout(p, fix); } catch (e) {}
+      try { Plotly.Plots.resize(p); } catch (e) {}
+    });
+  }
+  function addResetBtn() {
+    if (document.getElementById('reset-camera-btn')) return;
+    const row = document.querySelector('.controls-row') || document.querySelector('.controls');
+    if (!row) return;
+    const b = document.createElement('button');
+    b.id = 'reset-camera-btn';
+    b.textContent = '↻ Reset view';
+    b.title = 'Recenter the 3D plot';
+    b.style.cssText = 'padding: 3px 9px; font-size: 12px; border: 1px solid #bbb;'
+      + ' background: #f6f6f6; border-radius: 3px; cursor: pointer; margin-left: 8px;';
+    b.addEventListener('click', () => {
+      const cam = {
+        'scene.camera': {center: {x:0,y:0,z:0}, eye: {x:1.5,y:1.5,z:1.5}, up: {x:0,y:0,z:1}},
+        'scene.aspectmode': 'cube',
+        'scene.aspectratio': {x:1,y:1,z:1},
+      };
+      plots().forEach(p => { try { Plotly.relayout(p, cam); } catch (e) {} });
+    });
+    row.appendChild(b);
+  }
+  function boot() {
+    if (plots().length < 1) { setTimeout(boot, 200); return; }
+    recenter();
+    addResetBtn();
+    window.addEventListener('resize', () => setTimeout(recenter, 100));
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => setTimeout(boot, 400));
+  } else {
+    setTimeout(boot, 400);
+  }
+})();
+</script>
 </body>
 </html>
