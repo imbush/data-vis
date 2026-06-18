@@ -46,6 +46,35 @@ def main():
     std_expr  = np.asarray(proj['std_expr'])
     X_keep    = np.asarray(proj['X_keep'], dtype=np.float64)
     subs      = np.array(proj['subs'])
+    cell_subclass = np.array(proj.get(
+        'cell_subclass',
+        [GROUP_NAME] * len(subs)
+    ))
+    cell_region_arr = proj.get('cell_region')
+    if cell_region_arr is None:
+        cell_region_list = None
+        region_options = []
+    else:
+        cell_region_list = [str(x) for x in cell_region_arr]
+        region_options = sorted(set(cell_region_list))
+        if len(region_options) <= 1:
+            cell_region_list = None
+            region_options = []
+    cell_donor_arr = proj.get('cell_donor')
+    cell_donor_list = ([str(x) for x in cell_donor_arr]
+                       if cell_donor_arr is not None else None)
+    # Per-cell developmental age (dev-VIS cohort only). When non-None we
+    # enable the Age colour-by button.
+    cell_age_arr = proj.get('cell_age')
+    cell_age_list = ([str(x) for x in cell_age_arr]
+                     if cell_age_arr is not None else None)
+    cell_layer_arr = proj.get('cell_layer')
+    if cell_layer_arr is None:
+        cell_layer_list = None
+    else:
+        cell_layer_list = [str(x) for x in cell_layer_arr]
+        if len(set(cell_layer_list)) <= 1:
+            cell_layer_list = None
     n_cells   = X_keep.shape[0]
     n_genes   = len(gene_names)
 
@@ -54,6 +83,16 @@ def main():
     qc_total, qc_ngenes, qc_ribo = (np.asarray(qc['total_counts']),
                                     np.asarray(qc['n_genes']),
                                     np.asarray(qc['pct_ribo']))
+    _r = qc_ribo.astype(np.float64) - qc_ribo.mean()
+    _rs = float(np.sqrt((_r * _r).sum()) + 1e-12)
+    _Xc = X_keep.astype(np.float32) - X_keep.mean(0)
+    _denom = np.sqrt((_Xc * _Xc).sum(0)) * _rs + 1e-12
+    gene_ribo_corr = np.asarray((_Xc * _r[:, None]).sum(0) / _denom, dtype=np.float32)
+    # Per-gene OLS slope of expression ~ pct_ribo. Used by the "Regress out
+    # %ribo" toggle to residualise each gene before the recompute.
+    _var_ribo = float((_r * _r).sum()) + 1e-12
+    gene_ribo_slope = np.asarray((_Xc * _r[:, None]).sum(0) / _var_ribo, dtype=np.float32)
+    mean_pct_ribo = float(qc_ribo.mean())
 
     # ---- initial server-side diffmap (full cohort) ----------------------------
     Xp = X_keep[:, in_panel]
@@ -83,9 +122,19 @@ def main():
         pole_top.append(panel_genes_list[int(np.argmax(col))])
         pole_top.append(panel_genes_list[int(np.argmin(col))])
 
+    # Per-axis top genes for GO: rank panel genes by their centroid coord on
+    # each DC. ±30 most extreme on each pole feed Enrichr.
+    GO_TOP_PER_POLE = 30
+    top_genes_per_axis = []
+    for k in range(NDC):
+        col = gene_xyz[panel_idx, k]
+        order = np.argsort(col)
+        neg = [panel_genes_list[i] for i in order[:GO_TOP_PER_POLE]]
+        pos = [panel_genes_list[i] for i in order[-GO_TOP_PER_POLE:]][::-1]
+        top_genes_per_axis.append({'name': f'DC{k+1}', 'pos': pos, 'neg': neg})
+    go_axes = []  # GO bars removed from UI; placeholder for JS data
     cats = sorted(set(subs.tolist()))
-    base_pal = list(Category20[20]) + list(Set3[12]) + list(Set1[9]) + list(Category10[10])
-    subtype_palette = {c: base_pal[i % len(base_pal)] for i, c in enumerate(cats)}
+    subtype_palette = base.build_subtype_palette(cats)
     cell_color_default = [subtype_palette[s] for s in subs]
 
     def signed_pole(v3):
@@ -105,8 +154,12 @@ def main():
     cell_load = pole_loads(cell_xyz).round(4).tolist()
     gene_load = pole_loads(gene_xyz).round(4).tolist()
 
-    EXPR_SCALE = 10
-    expr_matrix = np.round(X_keep * EXPR_SCALE).astype(np.int16).tolist()
+    import base64
+    EXPR_SCALE = 16
+    _expr_q = np.clip(np.round(X_keep * EXPR_SCALE), 0, 255).astype(np.uint8)
+    expr_b64 = base64.b64encode(_expr_q.tobytes()).decode('ascii')
+    n_cells_emit = int(_expr_q.shape[0])
+    n_genes_emit = int(_expr_q.shape[1])
     panel_idx_list = [j for j, p in enumerate(in_panel.tolist()) if p]
 
     LIM, POLE = 1.0, 1.22
@@ -120,7 +173,7 @@ def main():
         edge_trace = go.Scatter3d(x=ax_x, y=ax_y, z=ax_z, mode='lines',
                                   line=dict(color='lightgray', width=2),
                                   hoverinfo='skip', showlegend=False)
-        pole_lab = [f'{POLE_NAMES[p]}<br>({pole_top[p]})' for p in range(6)]
+        pole_lab = [POLE_NAMES[p] for p in range(6)]
         vertex_trace = go.Scatter3d(
             x=axis_ends[:,0], y=axis_ends[:,1], z=axis_ends[:,2],
             mode='markers+text', marker=dict(size=4, color=POLE_COLORS),
@@ -133,8 +186,8 @@ def main():
             text=hover_text, hoverinfo='text', showlegend=False)
         loading_trace = go.Scatter3d(
             x=axis_ends[:,0], y=axis_ends[:,1], z=axis_ends[:,2], mode='markers',
-            marker=dict(size=16, color=['#e0e0e0']*6, opacity=1.0,
-                        line=dict(width=1.5, color='#222')),
+            marker=dict(size=0,  color=['#e0e0e0']*6, opacity=0.0,
+                        line=dict(width=0)),
             hoverinfo='text', hovertext=POLE_NAMES, showlegend=False)
         highlight_trace = go.Scatter3d(
             x=[None], y=[None], z=[None], mode='markers',
@@ -153,12 +206,15 @@ def main():
                 aspectmode='cube', dragmode='orbit',
                 camera=dict(eye=dict(x=1.8, y=1.8, z=1.4),
                             center=dict(x=0, y=0, z=0), up=dict(x=0, y=0, z=1))),
-            margin=dict(l=0, r=0, t=40, b=0),
+            margin=dict(l=0, r=0, t=(40 if title else 4), b=0),
             paper_bgcolor='white', plot_bgcolor='white')
         return fig
 
+    def _age_tag(i):
+        if cell_age_list is None: return ''
+        return f' · age {cell_age_list[i]}'
     cell_hover_text = [
-        f'#{i}<br>subtype: {subs[i]}<br>'
+        f'#{i}<br>subtype: {subs[i]}{_age_tag(i)}<br>'
         f'DC1,2,3 = ({DC[i,0]:.3f}, {DC[i,1]:.3f}, {DC[i,2]:.3f})'
         for i in range(n_cells)]
     gene_hover_text = [
@@ -177,12 +233,9 @@ def main():
         f'<b>included</b> here — uncheck them in the subtype row and recompute to drop them.'
         if historical_outliers else 'No subtypes are flagged as outliers.')
 
-    fig_cells = build_fig(cell_xyz, cell_color_default, cell_hover_text,
-                          f'Cells — diffmap (n={n_cells})  '
-                          f'<i>recompute on the subtype subset to re-fit the diffusion embedding</i>')
-    fig_genes = build_fig(gene_xyz, gene_color_default, gene_hover_text,
-                          f'Genes — expression-weighted centroid '
-                          f'({n_panel_disp} panel + {n_imputed} broader)')
+    # No in-plot titles — each plot sits under its own HTML title box (see body).
+    fig_cells = build_fig(cell_xyz, cell_color_default, cell_hover_text, '')
+    fig_genes = build_fig(gene_xyz, gene_color_default, gene_hover_text, '')
 
     cells_html = to_html(fig_cells, include_plotlyjs='cdn', full_html=False,
                           div_id='cell-plot', config={'displayModeBar': True, 'responsive': True})
@@ -210,25 +263,87 @@ def main():
     mean_min, mean_max = float(np.min(mean_expr)), float(np.max(mean_expr))
     std_min,  std_max  = float(np.min(std_expr)),  float(np.max(std_expr))
 
+    # Subtype checkbox row, grouped by cell_subclass with per-group all/none.
     subtype_counts = {c: int(np.sum(subs == c)) for c in cats}
-    subtype_checkbox_html = ''.join(
-        f'<label class="subt-chk">'
-        f'<input type="checkbox" data-sub="{c}" checked> '
-        f'<span style="color:{subtype_palette[c]}; font-weight:700;">●</span> '
-        f'{c} <span class="ct">({subtype_counts[c]})</span></label>'
-        for c in cats)
+    subtype_to_subclass = {}
+    for s, csc in zip(subs, cell_subclass):
+        if s not in subtype_to_subclass:
+            subtype_to_subclass[s] = csc
+    subclass_order = sorted(set(cell_subclass.tolist()))
+    by_subclass = {csc: [c for c in cats if subtype_to_subclass.get(c) == csc]
+                   for csc in subclass_order}
+    default_subset = set(base.GROUP.get('default_selected_subtypes') or ())
+    def _chk(c):
+        return 'checked' if (not default_subset or c in default_subset) else ''
+    subtype_group_html_parts = []
+    for csc in subclass_order:
+        sub_subs = by_subclass[csc]
+        if not sub_subs: continue
+        total_in_grp = sum(subtype_counts[c] for c in sub_subs)
+        subtype_group_html_parts.append(
+            f'<div class="subt-group" data-subclass="{csc}">'
+            f'<div class="subt-group-head">'
+            f'<b>{csc}</b> <span class="ct">({total_in_grp} cells, {len(sub_subs)} subtypes)</span>'
+            f'<button class="grp-toggle" data-grp="{csc}" data-action="all" title="Check all in {csc}">all</button>'
+            f'<button class="grp-toggle" data-grp="{csc}" data-action="none" title="Uncheck all in {csc}">none</button>'
+            f'</div>'
+            f'<div class="subt-group-checkboxes">'
+            + ''.join(
+                f'<label class="subt-chk" data-grp-sub="{csc}">'
+                f'<input type="checkbox" data-sub="{c}" data-grp="{csc}" {_chk(c)}> '
+                f'<span style="color:{subtype_palette[c]}; font-weight:700;">●</span> '
+                f'{c} <span class="ct">({subtype_counts[c]})</span></label>'
+                for c in sub_subs)
+            + '</div></div>'
+        )
+    subtype_checkbox_html = ''.join(subtype_group_html_parts)
+    auto_recompute_on_load = bool(default_subset)
 
+    # Build interned (cats + uint8 index) form of cell_subtype.
+    _subs_list = subs.tolist()
+    _cs_cats = list(dict.fromkeys(_subs_list))
+    if len(_cs_cats) > 256:
+        raise RuntimeError(f"cell_subtype has >256 unique categories; bump to uint16")
+    _cs_lookup = {c: i for i, c in enumerate(_cs_cats)}
+    _cs_idx_arr = np.array([_cs_lookup[v] for v in _subs_list], dtype=np.uint8)
+    import base64 as _b64m
+    _cs_idx_b64 = _b64m.b64encode(_cs_idx_arr.tobytes()).decode("ascii")
     js_data = (
         f"const EXPR_SCALE  = {EXPR_SCALE};\n"
-        f"const expr_matrix = {json.dumps(expr_matrix)};\n"
+        f"const N_CELLS = {n_cells_emit};\n"
+        f"const N_GENES = {n_genes_emit};\n"
+        f"const EXPR_B64 = {json.dumps(expr_b64)};\n"
+        # Decode the base64 expression matrix into a flat Uint8Array once.
+        # Index as expr_matrix[i * N_GENES + j] (divide by EXPR_SCALE for log-CPM).
+        f"const expr_matrix = (function() {{\n"
+        f"  const bin = atob(EXPR_B64);\n"
+        f"  const u8 = new Uint8Array(bin.length);\n"
+        f"  for (let k = 0; k < bin.length; k++) u8[k] = bin.charCodeAt(k);\n"
+        f"  return u8;\n"
+        f"}})();\n"
         f"const cell_default_colors = {json.dumps(cell_color_default)};\n"
         f"let gene_default_colors = {json.dumps(gene_color_default)};\n"
-        f"const cell_subtype = {json.dumps(subs.tolist())};\n"
+        f"const _cell_subtype_cats = {json.dumps(_cs_cats)};\n"
+        f"const _cell_subtype_idx_b64 = {json.dumps(_cs_idx_b64)};\n"
+        "const cell_subtype = (function() {\n"
+        "  const bin = atob(_cell_subtype_idx_b64);\n"
+        "  const out = new Array(bin.length);\n"
+        "  for (let k = 0; k < bin.length; k++) out[k] = _cell_subtype_cats[bin.charCodeAt(k)];\n"
+        "  return out;\n"
+        "})();\n"
+        f"const cell_region = {json.dumps(cell_region_list)};\n"
+        f"const region_options = {json.dumps(region_options)};\n"
+        f"const cell_age = {json.dumps(cell_age_list)};\n"
+        f"const cell_layer = {json.dumps(cell_layer_list)};\n"
         f"const subtype_palette = {json.dumps(subtype_palette)};\n"
         f"const gene_name    = {json.dumps(gene_names)};\n"
         f"const gene_in_panel = {json.dumps(panel_mask_list)};\n"
         f"const gene_mean    = {json.dumps([round(float(v),3) for v in mean_expr])};\n"
         f"const gene_std     = {json.dumps([round(float(v),3) for v in std_expr])};\n"
+        f"const gene_ribo_corr = {json.dumps([round(float(v),3) for v in gene_ribo_corr])};\n"
+        f"const gene_ribo_slope = {json.dumps([round(float(v),4) for v in gene_ribo_slope])};\n"
+        f"const mean_pct_ribo = {round(float(mean_pct_ribo), 3)};\n"
+        f"const RIBO_CORR_THRESHOLD = 0.3;\n"
         f"let gene_x = {json.dumps(gx)};\n"
         f"let gene_y = {json.dumps(gy)};\n"
         f"let gene_z = {json.dumps(gz)};\n"
@@ -263,15 +378,60 @@ def main():
                      + ''.join(f'<option value="{g}">' for g in gene_names)
                      + '</datalist>')
 
+    if region_options:
+        region_count = {r: cell_region_list.count(r) for r in region_options}
+        region_toggle_html = (
+            '<span class="region-toggle">'
+            '<span class="label">Region:</span>'
+            '<button class="rg-btn active" data-region="both" '
+            f'title="Use all cells regardless of region">Both ({len(cell_region_list)})</button>'
+            + ''.join(
+                f'<button class="rg-btn" data-region="{r}" '
+                f'title="Use only cells dissected from {r}">{r} ({region_count[r]})</button>'
+                for r in region_options)
+            + '</span>'
+        )
+    else:
+        region_toggle_html = ''
+
+    def _age_sort_key(s):
+        s = str(s).strip()
+        if s.startswith(('E','e')):
+            try: return -float(s[1:])
+            except ValueError: return 0
+        if s.startswith(('P','p')):
+            try: return float(s[1:])
+            except ValueError: return 999
+        return 1000
+    if cell_age_list is not None:
+        unique_ages = sorted(set(cell_age_list), key=_age_sort_key)
+        age_count = {a: cell_age_list.count(a) for a in unique_ages}
+        if len(unique_ages) > 1:
+            age_toggle_html = (
+                '<span class="age-toggle"><span class="label">Age:</span>'
+                '<button class="ag-btn-all" data-act="all" title="Enable all ages">all</button>'
+                '<button class="ag-btn-all" data-act="none" title="Disable all ages">none</button>'
+                + ''.join(
+                    f'<button class="ag-btn active" data-age="{a}" '
+                    f'title="Include {a} cells ({age_count[a]})">{a}</button>'
+                    for a in unique_ages)
+                + '</span>'
+            )
+        else:
+            age_toggle_html = ''
+    else:
+        age_toggle_html = ''
+
+
     page = f"""<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <title>{GROUP_NAME} diffmap recompute explorer</title>
 <style>
+{base.UNIFIED_DESIGN_CSS}
 html, body {{ height: 100%; margin: 0; padding: 0; }}
-body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-        display: flex; flex-direction: column; padding: 6px 12px; box-sizing: border-box; }}
+body {{ display: flex; flex-direction: column; padding: 6px 12px; box-sizing: border-box; }}
 h2 {{ margin: 0 0 2px 0; }}
 .hint {{ flex: 0 0 auto; font-size: 17px; color: #222; line-height: 1.3; margin: 2px 0 6px 0; }}
 .hint b {{ color: #1f77b4; }}
@@ -283,6 +443,41 @@ h2 {{ margin: 0 0 2px 0; }}
             border-radius: 3px; cursor: pointer; }}
 .set-btn:hover {{ background: #eee; }}
 .set-btn.active {{ background: #1f77b4; color: white; border-color: #1f77b4; }}
+.region-toggle {{ display: inline-flex; align-items: center; gap: 4px;
+                    padding-right: 8px; margin-right: 6px;
+                    border-right: 1px dashed #d0a060; }}
+.region-toggle .rg-btn {{ padding: 2px 8px; font-size: 12px;
+                            border: 1px solid #ccc; background: #fff;
+                            border-radius: 3px; cursor: pointer; font-weight: 600; }}
+.region-toggle .rg-btn:hover {{ background: #f6f6f6; }}
+.region-toggle .rg-btn.active {{ background: #6b46c1; color: white;
+                                   border-color: #553c9a; cursor: default; }}
+.age-toggle {{ display: inline-flex; align-items: center; gap: 3px;
+               padding-right: 8px; margin-right: 6px;
+               border-right: 1px dashed #5fa86a;
+               flex-wrap: wrap; max-width: 100%; }}
+.age-toggle .ag-btn, .age-toggle .ag-btn-all {{
+  padding: 1px 6px; font-size: 11px;
+  border: 1px solid #b0c4a0; background: #fff;
+  border-radius: 3px; cursor: pointer; font-weight: 500; }}
+.age-toggle .ag-btn-all {{ font-size: 10px; padding: 1px 5px;
+                            background: #f3f7f0; border-color: #c0d0b0; }}
+.age-toggle .ag-btn:hover {{ background: #eef5ea; }}
+.age-toggle .ag-btn.active {{ background: #2e7d32; color: white;
+                                border-color: #1b5e20; }}
+.age-toggle .ag-btn:not(.active) {{ opacity: 0.5; text-decoration: line-through; }}
+
+.subt-group {{ display: flex; flex-direction: column; gap: 2px;
+                padding: 4px 6px; border: 1px solid #e0c79a; background: #fffaf0;
+                border-radius: 4px; }}
+.subt-group-head {{ display: flex; align-items: center; gap: 6px; font-size: 12px; }}
+.subt-group-head .ct {{ color: #888; font-weight: 400; }}
+.subt-group-head .grp-toggle {{ padding: 1px 7px; font-size: 11px;
+                                 border: 1px solid #ccc; background: #f6f6f6;
+                                 border-radius: 3px; cursor: pointer; }}
+.subt-group-head .grp-toggle:hover {{ background: #eee; }}
+.subt-group-checkboxes {{ display: flex; flex-wrap: wrap; gap: 4px;
+                           padding-left: 4px; }}
 .subt-chk {{ display:inline-flex; align-items:center; gap:3px; padding:1px 6px;
              border:1px solid #ddd; border-radius:3px; background:#fafafa;
              font-size:12px; cursor:pointer; user-select:none; }}
@@ -292,6 +487,10 @@ h2 {{ margin: 0 0 2px 0; }}
 #recompute-btn:hover {{ background:#ec6a00; }}
 #recompute-btn:disabled {{ background:#aaa; border-color:#888; cursor:not-allowed; }}
 #mean-slider, #std-slider {{ width: 180px; }}
+.ribo-toggle {{ font-size: 12px; color: #555; display: inline-flex;
+                align-items: center; gap: 4px; margin-left: 12px;
+                padding: 2px 6px; border: 1px dashed #bbb; border-radius: 3px; cursor: pointer; }}
+.ribo-toggle input {{ margin: 0; }}
 .row {{ flex: 1 1 auto; display: flex; flex-direction: row; gap: 8px; min-height: 0; }}
 .col {{ flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }}
 .col > .plotly-graph-div {{ flex: 1 1 auto; min-height: 0; height: 100% !important; }}
@@ -299,42 +498,79 @@ h2 {{ margin: 0 0 2px 0; }}
 .legend {{ flex: 0 0 auto; font-size: 11px; color: #444; margin-top: 4px; }}
 button {{ font-size: 13px; padding: 4px 10px; }}
 details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
+.go-row {{ display: flex; gap: 8px; padding: 4px 6px; background: #f9fafb;
+            border: 1px solid #dadde2; border-radius: 3px; }}
+.go-axis-card {{ flex: 1 1 0; min-width: 0; display: flex; flex-direction: column;
+                  gap: 2px; font-size: 11px; }}
+.go-axis-card > .ttl {{ font-weight: 700; color: #222; }}
+.go-axis-card > .ttl .axis-stripe {{ display: inline-block; width: 10px; height: 10px;
+                                       border-radius: 50%; margin-right: 4px;
+                                       vertical-align: middle; }}
+.go-bar {{ display: grid; grid-template-columns: 1fr auto; gap: 6px;
+            align-items: center; cursor: help; padding: 1px 2px;
+            border-bottom: 1px dashed transparent; }}
+.go-bar:hover {{ background: #ffffff; border-bottom-color: #c0c4cc; }}
+.go-bar .bar-text {{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                      font-size: 11px; color: #333; }}
+.go-bar .bar-fill {{ position: relative; height: 6px; min-width: 4px;
+                      background: linear-gradient(to right, #1f77b4, #1f77b4);
+                      border-radius: 2px; }}
+.go-bar .bar-pval {{ font-size: 10px; color: #888;
+                      font-variant-numeric: tabular-nums; min-width: 50px;
+                      text-align: right; }}
+.go-bar.empty {{ color: #999; font-style: italic; }}
+.go-bars-label {{ font-size: 11px; color: #555; font-weight: 600;
+                   align-self: center; margin-right: 4px; }}
+{base.LAYOUT_CSS}
 {base.VIZ_NAV_CSS}
+{base.BUTTON_CSS}
 </style>
 </head>
 <body>
-<h2>{GROUP_NAME} diffmap — subtype-subset recompute</h2>
-{base.viz_nav_html(SLUG, 'diffmap')}
+<div class="wrap">
+<h2>{base.cohort_title(GROUP_NAME)}</h2>
 <div class="hint">
-<b>Pick which subtypes you want to fit the embedding to</b>, then click <b>Recompute diffmap</b>.
-The diffusion embedding re-fits to those cells; every gene re-projects as a centroid.
+<b>Pick which subtypes you want to fit the embedding to</b>, then click <b>Replot</b>.
 </div>
-<details class="header">
-<summary>About this app (click to expand)</summary>
-<div style="margin-top:4px;">
-Initial view shows the diffusion-map embedding fit on all <b>{n_cells}</b> {GROUP_NAME} cells
-via scanpy (panel: {n_panel_disp} HVG z-scored, PCA→kNN→diffmap; DC1/2/3 eigenvalues
-{evals[0]:.3f}, {evals[1]:.3f}, {evals[2]:.3f}). Genes sit at the expression-weighted centroid
-of cell DCs. {excluded_blurb}<br>
-<b>Recompute</b> runs a <i>Laplacian eigenmap</i> client-side (adaptive Gaussian kernel on a
-15-NN graph in the standardized panel space; symmetric normalization; top-4 eigenvectors of
-A = D⁻¹ᐟ² W D⁻¹ᐟ² via power iteration with deflation; drop the trivial one). Laplacian
-eigenmaps and diffusion maps share the same eigenstructure on the same kernel — the visual
-geometry will be very close to scanpy's diffmap on the same subset. Gene centroids are
-re-computed against the new cell DCs. Recompute takes ~1–5 s for a few-hundred to ~1k cells.
-</div>
-</details>
 
-<div class="controls">
-  <div class="controls-row" style="background:#fff3e0; border:1px solid #ffcc80; border-radius:4px; padding:4px 6px;">
+<div class="ctrl-box">
+  <div class="ctrl-box-title">Plotting Method</div>
+  <div class="controls-row">{base.viz_nav_html(SLUG, 'diffmap')}</div>
+</div>
+
+<div class="ctrl-box">
+  <div class="ctrl-box-title">Color Scheme</div>
+  <div class="controls-row">
+    <button id="qc-counts" class="qc-btn">Counts</button>
+    <button id="qc-genes" class="qc-btn">Genes</button>
+    <button id="qc-ribo" class="qc-btn">% ribo</button>
+    <button id="qc-region" class="qc-btn" title="Colour each cell by its dissected region (V1 = orange, ALM = purple). Greyed out for single-region cohorts.">Region</button>
+    <button id="qc-age" class="qc-btn" title="Colour each cell by its developmental stage (E11.5 → P56). Greyed out for cohorts without age info.">Age</button>
+    <button id="qc-layer" class="qc-btn" title="Colour each cell by its dissected cortical layer (L1 → L6b), depth-encoded on viridis. Compound dissections (e.g. L2/3-L4) get the midpoint depth. Hidden for cohorts without layer info.">Layer of Microdissection</button>
+    <button id="reset-btn">Reset colours (subtype)</button>
+  </div>
+</div>
+
+<div class="ctrl-box">
+  <div class="ctrl-box-title">Filter Which Cells are Shown</div>
+  <div class="controls-row">
+    {region_toggle_html}
+    {age_toggle_html}
     <span class="label">Subtypes:</span>
     {subtype_checkbox_html}
-    <button id="subt-all">all</button>
-    <button id="subt-none">none</button>
-    <span style="flex: 1 1 0;"></span>
-    <button id="recompute-btn">Recompute diffmap on selected →</button>
+    <button id="subt-all" title="Check every subtype">all</button>
+    <button id="subt-none" title="Uncheck every subtype">none</button>
+    <span class="lin-sep">|</span>
+    <button class="lin-btn" data-lin="MGE" title="Select MGE-derived subclasses: Pvalb (incl chandelier) + Sst (incl Chodl)">+MGE</button>
+    <button class="lin-btn" data-lin="CGE" title="Select CGE-derived subclasses: Vip + Lamp5 + Sncg + Serpinf1 (+ Lamp5 Lhx6)">+CGE</button>
+    <button class="lin-btn" data-lin="LGE" title="Select LGE-derived subclasses (rare in cortex; mostly striatal)">+LGE</button>
+    <button id="recompute-btn" title="Refit the diffusion embedding on the panel HVG, using only the checked-subtype cells.">Replot with gene panel</button>
     <span id="recompute-status" style="margin-left:8px;"></span>
   </div>
+</div>
+
+<div class="ctrl-box">
+  <div class="ctrl-box-title">Filter which Genes are Shown</div>
   <div class="controls-row"><span class="label">Gene set:</span>{set_buttons_html}
     <span class="label" style="margin-left:14px;">Find gene:</span>
     <input id="gene-search" list="gene-datalist" placeholder="e.g. Cnr1" autocomplete="off"
@@ -348,25 +584,33 @@ re-computed against the new cell DCs. Recompute takes ~1–5 s for a few-hundred
     <span class="label" style="margin-left:14px;">Min dispersion (std):</span>
     <input id="std-slider" type="range" min="{std_min:.3f}" max="{std_max:.3f}" step="0.01" value="{std_min:.3f}">
     <span id="std-value">{std_min:.2f}</span>
+    <label class="ribo-toggle" title="Hide genes whose log-CPM correlates with %ribosomal above this threshold. 1.00 = no filtering (default). Lower values strip out more 'metabolic' / housekeeping genes that track per-cell ribosomal content rather than cell type.">
+      Metabolism filter <span id="ribo-corr-label">|r|≤1.00</span>
+      <input type="range" id="ribo-corr-slider" min="0.10" max="1.00" step="0.05" value="1.00" style="vertical-align:middle; width:120px;">
+      <span id="ribo-corr-count" style="color:#888;"></span></label>
+    <label class="ribo-toggle" title="Subtract each gene's linear fit on pct_ribo before the recompute. Equivalent to projecting expression onto the subspace orthogonal to %ribo, so SVD/UMAP/diffmap see only the residual (non-metabolic) variance. NMF clips negative residuals to 0.">
+      <input type="checkbox" id="regress-ribo"> Regress out %ribo
+    </label>
     <span class="label" style="margin-left:14px;">Visible:</span>
     <span id="visible-count">{n_panel_disp} / {n_genes}</span>
-    <span style="margin-left:auto; display:flex; gap:6px; align-items:center;">
-      <span class="label">QC colour:</span>
-      <button id="qc-counts" class="qc-btn">Counts</button>
-      <button id="qc-genes" class="qc-btn">Genes</button>
-      <button id="qc-ribo" class="qc-btn">% ribo</button>
-      <button id="reset-btn">Reset colours</button>
-    </span>
   </div>
-  <div class="controls-row"><span id="status">Hover a cell (left) or a gene (right) to colour by expression.</span></div>
 </div>
-<div class="row">
-  <div class="col">{cells_html}</div>
-  <div class="col">{genes_html}</div>
+
+<div class="controls-row" style="justify-content:center;"><span id="status">Hover a cell (left) or a gene (right) to colour by expression.</span></div>
+
+<div class="plot-pair">
+  <div class="plot-box">
+    <div class="plot-box-title" id="cell-plot-title"></div>
+    {cells_html}
+  </div>
+  <div class="plot-box">
+    <div class="plot-box-title" id="gene-plot-title"></div>
+    {genes_html}
+  </div>
 </div>
-<div class="legend">
-<b>Cell default colours</b> (subtype): {sub_legend}<br>
-<b>Gene default colours</b> (strongest signed DC): <span id="pole-legend">{pole_legend}</span>
+
+<span id="pole-legend" style="display:none">{pole_legend}</span>
+<footer class="cite">{base.cohort_citation(GROUP_NAME)}</footer>
 </div>
 <script>
 {js_data}
@@ -380,11 +624,28 @@ const DEFAULT_LOAD_COLORS = ['#e0e0e0','#e0e0e0','#e0e0e0','#e0e0e0','#e0e0e0','
 const KNN_K = 15;
 let lastHoveredCell = null, lastHoveredGene = null;
 
+// ---- dynamic plot-box titles --------------------------------------------
+const VIZ_METHOD = 'Diffusion map';
+let titleCellColor = 'subtype';
+let titleGeneRef   = 'strongest DC';
+let titleGeneN     = {n_panel_disp};
+function activeCellCount() {{
+  let n = 0; for (let i = 0; i < cell_active.length; i++) if (cell_active[i]) n++; return n;
+}}
+function refreshTitles() {{
+  const ct = document.getElementById('cell-plot-title');
+  const gt = document.getElementById('gene-plot-title');
+  if (ct) ct.innerHTML = 'Cells plotted on <b>' + VIZ_METHOD + '</b> axes · coloured by <b>'
+    + titleCellColor + '</b> · n=' + activeCellCount().toLocaleString();
+  if (gt) gt.innerHTML = 'Genes plotted on <b>' + VIZ_METHOD + '</b> axes · coloured by <b>'
+    + titleGeneRef + '</b> · n=' + titleGeneN.toLocaleString();
+}}
+
 function exprToMagma(values) {{
   let lo = Infinity, hi = -Infinity;
   for (const v of values) {{ if (v < lo) lo = v; if (v > hi) hi = v; }}
   const range = (hi > lo) ? (hi - lo) : 1;
-  return values.map(v => magma[Math.max(0, Math.min(255, Math.round(255*(v-lo)/range)))]);
+  return Array.from(values, v => magma[Math.max(0, Math.min(255, Math.round(255*(v-lo)/range)))]);
 }}
 function loadingToMagma(loadings) {{
   return loadings.map(v => magma[Math.round(255 * Math.max(0, Math.min(1, v)))]);
@@ -394,7 +655,7 @@ cellPlot.on('plotly_hover', function(data) {{
   const pt = data.points[0]; if (pt.curveNumber !== POINTS_TRACE) return;
   const i = pt.pointNumber; if (lastHoveredCell === i) return; lastHoveredCell = i;
   if (!cell_active[i]) return;
-  const row = expr_matrix[i];
+  const row = expr_matrix.subarray(i * N_GENES, (i + 1) * N_GENES);
   Plotly.restyle(genePlot, {{'marker.color': [exprToMagma(row)]}}, [POINTS_TRACE]);
   const lc = loadingToMagma(cell_load[i]);
   Plotly.restyle(cellPlot, {{'marker.color': [lc]}}, [LOADING_TRACE]);
@@ -402,16 +663,17 @@ cellPlot.on('plotly_hover', function(data) {{
   let lo = Infinity, hi = -Infinity; for (const v of row) {{ if (v<lo) lo=v; if (v>hi) hi=v; }}
   const d = cell_dc[i];
   status.innerHTML = '<b style="color:' + cell_dom_color[i] + '">Cell #' + i
-    + '</b> <span style="color:#555">(' + cell_subtype[i] + ')</span> &nbsp; '
+    + '</b> <span style="color:#555">(' + cell_subtype[i] + (typeof cell_age !== 'undefined' && cell_age ? ' · age ' + cell_age[i] : '') + ')</span> &nbsp; '
     + 'DC1,2,3 = (' + d[0].toFixed(3) + ', ' + d[1].toFixed(3) + ', ' + d[2].toFixed(3) + ') &nbsp; '
     + 'genes recoloured by expression (range ' + (lo/EXPR_SCALE).toFixed(2) + '..' + (hi/EXPR_SCALE).toFixed(2) + ', magma)';
+  titleGeneRef = 'expression in cell #' + i + ' (' + cell_subtype[i] + ')'; refreshTitles();
 }});
 
 genePlot.on('plotly_hover', function(data) {{
   const pt = data.points[0]; if (pt.curveNumber !== POINTS_TRACE) return;
   const j = pt.pointNumber; if (lastHoveredGene === j) return; lastHoveredGene = j;
-  const n = expr_matrix.length; const col = new Array(n);
-  for (let i = 0; i < n; i++) col[i] = cell_active[i] ? expr_matrix[i][j] : null;
+  const n = N_CELLS; const col = new Array(n);
+  for (let i = 0; i < n; i++) col[i] = cell_active[i] ? expr_matrix[i * N_GENES + j] : null;
   const visible = col.filter(v => v !== null);
   const colors = exprToMagma(visible);
   const cellColors = new Array(n);
@@ -428,6 +690,7 @@ genePlot.on('plotly_hover', function(data) {{
     + '</b> <span style="color:#555">' + tag + '</span> &nbsp; '
     + 'centroid DC1,2,3 = (' + c[0].toFixed(3) + ', ' + c[1].toFixed(3) + ', ' + c[2].toFixed(3) + ') &nbsp; '
     + 'cells recoloured by expression (range ' + (lo/EXPR_SCALE).toFixed(2) + '..' + (hi/EXPR_SCALE).toFixed(2) + ', magma)';
+  titleCellColor = gene_name[j] + ' expression'; refreshTitles();
 }});
 
 document.getElementById('reset-btn').addEventListener('click', function() {{
@@ -438,27 +701,65 @@ document.getElementById('reset-btn').addEventListener('click', function() {{
   Plotly.restyle(genePlot, {{'marker.color': [DEFAULT_LOAD_COLORS]}}, [LOADING_TRACE]);
   lastHoveredCell = null; lastHoveredGene = null;
   status.innerHTML = 'Reset. Hover a cell or gene to colour by expression.';
+  titleCellColor = 'subtype'; titleGeneRef = 'strongest DC'; refreshTitles();
 }});
 
 let activeSet = 'panel';
 const meanSlider = document.getElementById('mean-slider'), stdSlider = document.getElementById('std-slider');
 const meanValueEl = document.getElementById('mean-value'), stdValueEl = document.getElementById('std-value');
 const visibleCount = document.getElementById('visible-count');
+const riboSlider    = document.getElementById('ribo-corr-slider');
+const riboCorrCount = document.getElementById('ribo-corr-count');
+const riboCorrLabel = document.getElementById('ribo-corr-label');
+function riboThreshold() {{
+  return riboSlider ? parseFloat(riboSlider.value) : 1.0;
+}}
+function isRiboCorr(j) {{
+  // True when this gene's |corr(%ribo)| exceeds the current slider threshold.
+  return Math.abs(gene_ribo_corr[j]) > riboThreshold();
+}}
+const regressRiboToggle = document.getElementById('regress-ribo');
+function readVal(i, j) {{
+  // Per-cell, per-gene expression (log-CPM). If "Regress out %ribo" is on,
+  // subtracts gene j's linear fit on pct_ribo so the recompute sees only the
+  // component orthogonal to the %ribo axis.
+  let v = expr_matrix[i * N_GENES + j] / EXPR_SCALE;
+  if (regressRiboToggle && regressRiboToggle.checked) {{
+    v -= gene_ribo_slope[j] * (qc_ribo[i] - mean_pct_ribo);
+  }}
+  return v;
+}}
+function readValNN(i, j) {{ return Math.max(0, readVal(i, j)); }}
+function refreshRiboCount() {{
+  if (!riboSlider) return;
+  const t = riboThreshold();
+  let n = 0;
+  for (let j = 0; j < gene_name.length; j++) if (Math.abs(gene_ribo_corr[j]) > t) n++;
+  if (riboCorrCount) riboCorrCount.textContent = '(' + n + ' hidden)';
+  if (riboCorrLabel) riboCorrLabel.textContent = '|r|≤' + t.toFixed(2);
+}}
 function applyGeneFilter() {{
   const meanThr = parseFloat(meanSlider.value), stdThr = parseFloat(stdSlider.value);
+  const hideRibo = !!riboSlider && riboThreshold() < 1.0;
   const mask = gene_sets[activeSet], n = gene_name.length;
   const xs = new Array(n), ys = new Array(n), zs = new Array(n); let visible = 0;
   for (let j = 0; j < n; j++) {{
-    if (mask[j] && gene_mean[j] >= meanThr && gene_std[j] >= stdThr) {{
+    if (mask[j] && gene_mean[j] >= meanThr && gene_std[j] >= stdThr
+        && !(hideRibo && isRiboCorr(j))) {{
       xs[j]=gene_x[j]; ys[j]=gene_y[j]; zs[j]=gene_z[j]; visible++;
     }} else {{ xs[j]=null; ys[j]=null; zs[j]=null; }}
   }}
   Plotly.restyle(genePlot, {{x:[xs], y:[ys], z:[zs]}}, [POINTS_TRACE]);
   meanValueEl.textContent = meanThr.toFixed(2); stdValueEl.textContent = stdThr.toFixed(2);
   visibleCount.textContent = visible + ' / ' + n;
+  titleGeneN = visible; refreshTitles();
 }}
 meanSlider.addEventListener('input', applyGeneFilter);
 stdSlider.addEventListener('input', applyGeneFilter);
+if (riboSlider) {{
+  refreshRiboCount();
+  riboSlider.addEventListener('input', () => {{ refreshRiboCount(); applyGeneFilter(); }});
+}}
 document.querySelectorAll('.set-btn').forEach(btn => {{
   btn.addEventListener('click', () => {{
     if (btn.disabled) return; activeSet = btn.dataset.set;
@@ -477,8 +778,8 @@ function runSearch() {{
   let j = gene_name.findIndex(g => g.toLowerCase() === q);
   if (j < 0) j = gene_name.findIndex(g => g.toLowerCase().startsWith(q));
   if (j < 0) {{ status.innerHTML = 'Gene <b>' + geneSearch.value + '</b> not in this gene pool.'; clearSearch(); return; }}
-  const n = expr_matrix.length; const col = new Array(n);
-  for (let i = 0; i < n; i++) col[i] = cell_active[i] ? expr_matrix[i][j] : null;
+  const n = N_CELLS; const col = new Array(n);
+  for (let i = 0; i < n; i++) col[i] = cell_active[i] ? expr_matrix[i * N_GENES + j] : null;
   const visible = col.filter(v => v !== null);
   const colors = exprToMagma(visible);
   const cellColors = new Array(n);
@@ -492,11 +793,13 @@ function runSearch() {{
   lastHoveredGene = j;
   const hidden = !(gene_sets[activeSet][j]
                    && gene_mean[j] >= parseFloat(meanSlider.value)
-                   && gene_std[j] >= parseFloat(stdSlider.value));
+                   && gene_std[j] >= parseFloat(stdSlider.value)
+                   && !(riboSlider && riboThreshold() < 1.0 && isRiboCorr(j)));
   status.innerHTML = '<b style="color:' + gene_dom_color[j] + '">' + gene_name[j] + '</b> '
     + (gene_in_panel[j] ? '(panel)' : '(broader)')
     + (hidden ? ' <span style="color:#c00">[hidden by current filter — ring still shows its position]</span>' : '')
     + ' — cells recoloured by its expression (magma).';
+  titleCellColor = gene_name[j] + ' expression'; refreshTitles();
 }}
 geneSearch.addEventListener('change', runSearch);
 geneSearch.addEventListener('keydown', e => {{ if (e.key === 'Enter') runSearch(); }});
@@ -519,6 +822,7 @@ function colorByQC(arr, label, fmt) {{
   let lo = Infinity, hi = -Infinity;
   for (const v of valid) {{ if (v < lo) lo = v; if (v > hi) hi = v; }}
   status.innerHTML = 'Cells coloured by <b>' + label + '</b> (viridis; ' + fmt(lo) + ' → ' + fmt(hi) + ')';
+  titleCellColor = label; refreshTitles();
 }}
 const fmtInt = v => Math.round(v).toLocaleString();
 const fmtPct = v => v.toFixed(1) + '%';
@@ -526,20 +830,190 @@ document.getElementById('qc-counts').addEventListener('click', () => colorByQC(q
 document.getElementById('qc-genes').addEventListener('click', () => colorByQC(qc_ngenes, 'genes detected', fmtInt));
 document.getElementById('qc-ribo').addEventListener('click', () => colorByQC(qc_ribo, '% ribosomal', fmtPct));
 
+// Colour by region (V1 vs ALM). The Tasic and merged V1+ALM cohorts carry
+// `dissected_region` per cell; we paint VISp (V1) orange and ALM purple,
+// and fall back to grey for cells without a region label or for cells
+// excluded by the subtype filter.
+const REGION_COLORS = {{ 'VISp': '#ff7f0e', 'V1': '#ff7f0e', 'ALM': '#9467bd' }};
+const regionBtn = document.getElementById('qc-region');
+if (regionBtn) {{
+  const _regions = (typeof cell_region !== 'undefined' && cell_region) ? cell_region : [];
+  const uniqRegions = Array.from(new Set(_regions));
+  if (uniqRegions.length < 2) {{
+    regionBtn.remove();
+  }} else {{
+    regionBtn.addEventListener('click', () => {{
+      const colors = cell_region.map((r, i) =>
+        cell_active[i] ? (REGION_COLORS[r] || '#888888') : '#dddddd');
+      Plotly.restyle(cellPlot, {{'marker.color': [colors]}}, [POINTS_TRACE]);
+      const swatch = r => `<span style="display:inline-block;width:9px;height:9px;`
+        + `background:${{REGION_COLORS[r] || '#888'}};margin:0 3px 0 8px;`
+        + `border-radius:50%;vertical-align:middle;"></span>${{r}}`;
+      status.innerHTML = 'Cells coloured by <b>region</b> ('
+        + uniqRegions.sort().map(swatch).join('') + ').';
+    }});
+  }}
+}}
+
+// Colour by developmental age. Greyed out unless `cell_age` is defined.
+function ageToNumber(s) {{
+  if (s == null) return NaN;
+  s = String(s).trim();
+  if (s[0] === 'E' || s[0] === 'e') return -(parseFloat(s.slice(1)) || 0);
+  if (s[0] === 'P' || s[0] === 'p') return  (parseFloat(s.slice(1)) || 0);
+  return parseFloat(s);
+}}
+const ageBtn = document.getElementById('qc-age');
+if (ageBtn) {{
+  const _ages = (typeof cell_age !== 'undefined' && cell_age) ? cell_age : [];
+  const uniqAges = Array.from(new Set(_ages));
+  if (uniqAges.length < 2) {{
+    ageBtn.remove();   // no age info or single-age cohort → hide entirely
+  }} else {{
+    const ageNum = cell_age.map(ageToNumber);
+    ageBtn.addEventListener('click', () => {{
+      colorByQC(ageNum, 'age (E neg / P pos days)', v => v < 0 ? 'E' + (-v) : 'P' + v);
+    }});
+  }}
+}}
+
+// Colour by dissected cortical layer (Tasic V1/ALM). Each layer string
+// (L1, L2/3, L4, L5, L6, L6b; compound like L2/3-L4) maps to a viridis-depth
+// scalar (L1=1 → L6b=6.5; midpoint for compound). Hidden when None / single.
+function layerToDepth(s) {{
+  if (s == null) return NaN;
+  s = String(s).trim().toUpperCase();
+  function lone(tok) {{
+    tok = tok.trim();
+    if (tok === 'L1')   return 1.0;
+    if (tok === 'L2/3') return 2.5;
+    if (tok === 'L4')   return 4.0;
+    if (tok === 'L5')   return 5.0;
+    if (tok === 'L6')   return 6.0;
+    if (tok === 'L6B')  return 6.5;
+    return NaN;
+  }}
+  if (s.indexOf('-') >= 0) {{
+    const vs = s.split('-').map(lone).filter(v => !isNaN(v));
+    if (vs.length === 0) return NaN;
+    return (Math.min.apply(null, vs) + Math.max.apply(null, vs)) / 2;
+  }}
+  return lone(s);
+}}
+function layerLabel(d) {{
+  if (d <= 1.25) return 'L1';
+  if (d <= 2.9)  return 'L2/3';
+  if (d <= 4.5)  return 'L4';
+  if (d <= 5.5)  return 'L5';
+  if (d <= 6.25) return 'L6';
+  return 'L6b';
+}}
+// Layer of Microdissection: always visible. Cells without dissection info
+// render in low-alpha grey instead of being hidden or miscoloured.
+const layerBtn = document.getElementById('qc-layer');
+const GREY_NO_LAYER = 'rgba(180,180,180,0.30)';
+if (layerBtn) {{
+  const _layers = (typeof cell_layer !== 'undefined' && cell_layer) ? cell_layer : null;
+  const hasAnyLayer = _layers && new Set(_layers.filter(v => v != null)).size >= 1;
+  layerBtn.addEventListener('click', () => {{
+    if (!hasAnyLayer) {{
+      const colors = cell_active.map(a => a ? GREY_NO_LAYER : '#dddddd');
+      Plotly.restyle(cellPlot, {{'marker.color': [colors]}}, [POINTS_TRACE]);
+      status.innerHTML = '<i>This cohort has no microdissection layer info — all cells greyed.</i>';
+      return;
+    }}
+    const depths = _layers.map(layerToDepth);
+    const validVals = depths.filter((d, i) => cell_active[i] && !isNaN(d));
+    const palette = valuesToViridis(validVals);
+    let pi = 0;
+    const colors = depths.map((d, i) => {{
+      if (!cell_active[i]) return '#dddddd';
+      if (!isNaN(d)) return palette[pi++];
+      return GREY_NO_LAYER;
+    }});
+    Plotly.restyle(cellPlot, {{'marker.color': [colors]}}, [POINTS_TRACE]);
+    let lo = Infinity, hi = -Infinity;
+    for (const v of validVals) {{ if (v < lo) lo = v; if (v > hi) hi = v; }}
+    const greyN = depths.filter((d, i) => cell_active[i] && isNaN(d)).length;
+    status.innerHTML = 'Cells coloured by <b>layer of microdissection</b> ('
+      + (validVals.length ? 'viridis ' + layerLabel(lo) + ' → ' + layerLabel(hi) : 'viridis')
+      + (greyN > 0 ? '; ' + greyN + ' cells lack dissection info — shown grey' : '') + ').';
+  }});
+}}
+
 // ============================================================================
 // Subtype-subset diffmap recompute (Laplacian eigenmap)
 // ============================================================================
 const subtypeCheckboxes = Array.from(document.querySelectorAll('.subt-chk input[type="checkbox"]'));
+document.querySelectorAll('.grp-toggle').forEach(btn => {{
+  btn.addEventListener('click', () => {{
+    const grp = btn.dataset.grp;
+    const want = btn.dataset.action === 'all';
+    subtypeCheckboxes.forEach(cb => {{
+      if (cb.dataset.grp === grp) cb.checked = want;
+    }});
+  }});
+}});
 document.getElementById('subt-all').addEventListener('click', () => {{
   subtypeCheckboxes.forEach(cb => cb.checked = true);
 }});
 document.getElementById('subt-none').addEventListener('click', () => {{
   subtypeCheckboxes.forEach(cb => cb.checked = false);
 }});
+const LINEAGE_SUBCLASSES = {{
+  MGE: new Set(['Pvalb', 'Pvalb chandelier', 'Sst', 'Sst Chodl']),
+  CGE: new Set(['Vip', 'Lamp5', 'Lamp5 Lhx6', 'Sncg', 'Serpinf1']),
+  LGE: new Set(['LGE']),
+}};
+document.querySelectorAll('.lin-btn').forEach(btn => {{
+  btn.addEventListener('click', () => {{
+    const wanted = LINEAGE_SUBCLASSES[btn.dataset.lin] || new Set();
+    subtypeCheckboxes.forEach(cb => {{
+      if (wanted.has(cb.dataset.grp)) cb.checked = true;
+    }});
+  }});
+}});
 function selectedSubtypes() {{
   const out = new Set();
   subtypeCheckboxes.forEach(cb => {{ if (cb.checked) out.add(cb.dataset.sub); }});
   return out;
+}}
+
+let activeRegion = 'both';
+document.querySelectorAll('.rg-btn').forEach(btn => {{
+  btn.addEventListener('click', () => {{
+    activeRegion = btn.dataset.region;
+    document.querySelectorAll('.rg-btn').forEach(b =>
+      b.classList.toggle('active', b === btn));
+  }});
+}});
+function regionAllowed(i) {{
+  if (activeRegion === 'both' || !cell_region) return true;
+  return cell_region[i] === activeRegion;
+}}
+
+const activeAges = new Set(
+  (typeof cell_age !== 'undefined' && cell_age) ? Array.from(new Set(cell_age)) : []
+);
+document.querySelectorAll('.ag-btn').forEach(btn => {{
+  btn.addEventListener('click', () => {{
+    const a = btn.dataset.age;
+    if (activeAges.has(a)) {{ activeAges.delete(a); btn.classList.remove('active'); }}
+    else                   {{ activeAges.add(a);    btn.classList.add('active'); }}
+  }});
+}});
+document.querySelectorAll('.ag-btn-all').forEach(btn => {{
+  btn.addEventListener('click', () => {{
+    const want = btn.dataset.act === 'all';
+    document.querySelectorAll('.ag-btn').forEach(b => {{
+      b.classList.toggle('active', want);
+      if (want) activeAges.add(b.dataset.age); else activeAges.delete(b.dataset.age);
+    }});
+  }});
+}});
+function ageAllowed(i) {{
+  if (typeof cell_age === 'undefined' || !cell_age) return true;
+  return activeAges.has(cell_age[i]);
 }}
 
 // Build z-scored (subset rows, panel columns) matrix as Array of Float64Array rows.
@@ -551,7 +1025,7 @@ function buildSubsetPanelZ(cellSel) {{
     const j = panel_idx[k];
     let s = 0, ss = 0;
     for (let ii = 0; ii < m; ii++) {{
-      const v = expr_matrix[cellSel[ii]][j] / EXPR_SCALE;
+      const v = readVal(cellSel[ii], j);
       s += v; ss += v*v;
     }}
     mean[k] = s / m;
@@ -561,7 +1035,7 @@ function buildSubsetPanelZ(cellSel) {{
   for (let ii = 0; ii < m; ii++) {{
     const Zi = new Float64Array(n);
     for (let k = 0; k < n; k++) {{
-      const v = expr_matrix[cellSel[ii]][panel_idx[k]] / EXPR_SCALE;
+      const v = readVal(cellSel[ii], panel_idx[k]);
       Zi[k] = (v - mean[k]) / std[k];
     }}
     Z[ii] = Zi;
@@ -715,7 +1189,9 @@ function recomputeDiffmap() {{
   const t0 = performance.now();
   const sel = selectedSubtypes();
   const cellSel = [];
-  for (let i = 0; i < cell_subtype.length; i++) if (sel.has(cell_subtype[i])) cellSel.push(i);
+  for (let i = 0; i < cell_subtype.length; i++) {{
+    if (sel.has(cell_subtype[i]) && regionAllowed(i)) cellSel.push(i);
+  }}
   const m = cellSel.length;
   if (m < KNN_K + 1) {{
     recomputeStatus.innerHTML = '<span style="color:#c00">need ≥' + (KNN_K + 1)
@@ -770,7 +1246,7 @@ function recomputeDiffmap() {{
   for (let j = 0; j < n_all; j++) {{
     let s0 = 0, s1 = 0, s2 = 0, sw = 0;
     for (let ii = 0; ii < m; ii++) {{
-      const w = Math.max(0, expr_matrix[cellSel[ii]][j] / EXPR_SCALE);
+      const w = readValNN(cellSel[ii], j);
       sw += w;
       s0 += w * dc0[ii]; s1 += w * dc1[ii]; s2 += w * dc2[ii];
     }}
@@ -862,8 +1338,7 @@ function recomputeDiffmap() {{
                               'marker.color':[cellColors]}}, [POINTS_TRACE]);
   Plotly.restyle(genePlot, {{'marker.color':[gene_default_colors]}}, [POINTS_TRACE]);
   applyGeneFilter();
-  const newPoleLab = [];
-  for (let p = 0; p < 6; p++) newPoleLab.push(POLE_NAMES_[p] + '<br>(' + newPoleTop[p] + ')');
+  const newPoleLab = POLE_NAMES_.slice();
   Plotly.restyle(cellPlot, {{text:[newPoleLab], hovertext:[newPoleLab]}}, [VERTEX_TRACE]);
   Plotly.restyle(genePlot, {{text:[newPoleLab], hovertext:[newPoleLab]}}, [VERTEX_TRACE]);
   Plotly.restyle(cellPlot, {{'marker.color':[DEFAULT_LOAD_COLORS]}}, [LOADING_TRACE]);
@@ -875,9 +1350,22 @@ function recomputeDiffmap() {{
 
   const dt = ((performance.now() - t0) / 1000).toFixed(2);
   recomputeStatus.innerHTML = '<b>recomputed</b> on ' + m + ' / ' + n_cells_total + ' cells (' + dt + 's) — '
-    + 'DC1 eval=' + evals[1].toFixed(3) + ', DC2=' + evals[2].toFixed(3) + ', DC3=' + evals[3].toFixed(3)
-    + ' &nbsp; poles: ' + newPoleTop.map((g, p) => POLE_NAMES_[p] + '=' + g).join(', ');
+    + 'poles: ' + newPoleTop.map((g, p) => POLE_NAMES_[p] + '=' + g).join(', ');
   lastHoveredCell = null; lastHoveredGene = null;
+  // GO bars — rank panel-HVG centroids on each DC axis, ±30 per pole, refetch
+  const goAxes = [];
+  for (let k = 0; k < 3; k++) {{
+    const indexed = [];
+    for (let pi = 0; pi < panel_idx.length; pi++) {{
+      const j = panel_idx[pi];
+      indexed.push([newGeneCentroid[j][k], j]);
+    }}
+    indexed.sort((a, b) => a[0] - b[0]);
+    const N = Math.min(30, indexed.length);
+    const neg = indexed.slice(0, N).map(p => gene_name[p[1]]);
+    const pos = indexed.slice(-N).reverse().map(p => gene_name[p[1]]);
+    goAxes.push({{name: 'DC' + (k+1), genes: pos.concat(neg)}});
+  }}
 }}
 
 document.getElementById('recompute-btn').addEventListener('click', () => {{
@@ -886,13 +1374,37 @@ document.getElementById('recompute-btn').addEventListener('click', () => {{
   setTimeout(() => {{ try {{ recomputeDiffmap(); }} finally {{ btn.disabled = false; }} }}, 30);
 }});
 
+// --- Per-axis GO enrichment bars ---------------------------------------------
+const AXIS_STRIPE_COLORS = ['#d62728', '#1f77b4', '#2ca02c'];
+function shortGo(term) {{
+  return term.replace(/ \\(GO:\\d+\\)\\s*$/, '');
+}}
+function fmtPadj(p) {{
+  if (p === 0) return '0';
+  if (p < 1e-3) return p.toExponential(1);
+  return p.toFixed(3);
+}}
 function resizePlots() {{ Plotly.Plots.resize(cellPlot); Plotly.Plots.resize(genePlot); }}
 window.addEventListener('resize', resizePlots);
-setTimeout(function() {{ resizePlots(); applyGeneFilter(); }}, 50);
+refreshTitles();
+setTimeout(function() {{ resizePlots(); applyGeneFilter(); refreshTitles(); }}, 50);
+
+const AUTO_RECOMPUTE_DEFAULT = {str(auto_recompute_on_load).lower()};
+if (AUTO_RECOMPUTE_DEFAULT && !location.hash.includes('s=')) {{
+  // Signal the copy-link overlay so users don't see the full-cohort flash
+  // before the default-subset recompute kicks in.
+  window.__autoRecomputeDefault = true;
+  setTimeout(() => {{
+    const btn = document.getElementById('recompute-btn');
+    if (btn && !btn.disabled) btn.click();
+  }}, 80);
+}}
 </script>
 </body>
 </html>"""
 
+    if base.LOG_SCALE_X:
+        page = page.replace('</body>', base.LOG_X_RIBO_DISABLER + '</body>')
     with open(OUT, 'w') as f: f.write(page)
     print(f'  done. {os.path.getsize(OUT)/1e6:.1f} MB self-contained HTML.')
     print(f'  open: file://{OUT}')
