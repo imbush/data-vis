@@ -28,6 +28,11 @@ details.header { background: var(--card); border: 1px solid var(--line);
                  border-radius: 6px; padding: 6px 10px; }
 details.header summary { color: var(--muted); }
 details.header[open] summary { color: var(--fg); font-weight: 600; }
+/* Hide the per-cell × per-gene z-expression heatmap; keep the line strip
+   (expression curve) and the cell-type ordering canvas immediately below. */
+.heatmap-canvas-wrap { display: none !important; }
+.heatmap-row { min-height: 0 !important; flex: 0 0 auto !important; }
+.heatmap-row .line-strip-wrap { flex: 0 0 96px !important; }
 
 html, body { height: 100%; margin: 0; padding: 0; }
 body { display: flex; flex-direction: column; padding: 6px 12px; box-sizing: border-box; }
@@ -195,13 +200,13 @@ re-computed against the new cell DCs. Recompute takes ~1–5 s for a few-hundred
     <span class="label" style="margin-left:14px;">Visible:</span>
     <span id="visible-count">150 / 3473</span>
     <span style="margin-left:auto; display:flex; gap:6px; align-items:center;">
-      <span class="label">QC colour:</span>
+      <span class="label">Color:</span>
       <button id="qc-counts" class="qc-btn">Counts</button>
       <button id="qc-genes" class="qc-btn">Genes</button>
       <button id="qc-ribo" class="qc-btn">% ribo</button>
       <button id="qc-region" class="qc-btn" title="Colour each cell by its dissected region (V1 = orange, ALM = purple). Greyed out for single-region cohorts.">Region</button>
       <button id="qc-age" class="qc-btn" title="Colour each cell by its developmental stage (E11.5 → P56). Greyed out for cohorts without age info.">Age</button>
-      <button id="qc-layer" class="qc-btn" title="Colour each cell by its dissected cortical layer (L1 → L6b), depth-encoded on viridis. Compound dissections (e.g. L2/3-L4) get the midpoint depth. Hidden for cohorts without layer info.">Layer</button>
+      <button id="qc-layer" class="qc-btn" title="Colour each cell by its dissected cortical layer (L1 → L6b), depth-encoded on viridis. Compound dissections (e.g. L2/3-L4) get the midpoint depth. Hidden for cohorts without layer info.">Layer of Microdissection</button>
       <button id="reset-btn">Reset colours</button>
     </span>
   </div>
@@ -543,18 +548,37 @@ function layerLabel(d) {
   if (d <= 6.25) return 'L6';
   return 'L6b';
 }
+// Layer of Microdissection: always visible. Cells without dissection info
+// render in low-alpha grey instead of being hidden or miscoloured.
 const layerBtn = document.getElementById('qc-layer');
+const GREY_NO_LAYER = 'rgba(180,180,180,0.30)';
 if (layerBtn) {
-  const _layers = (typeof cell_layer !== 'undefined' && cell_layer) ? cell_layer : [];
-  const uniqLayers = Array.from(new Set(_layers));
-  if (uniqLayers.length < 2) {
-    layerBtn.remove();
-  } else {
-    const layerDepth = cell_layer.map(layerToDepth);
-    layerBtn.addEventListener('click', () => {
-      colorByQC(layerDepth, 'cortical layer (L1 → L6b)', layerLabel);
+  const _layers = (typeof cell_layer !== 'undefined' && cell_layer) ? cell_layer : null;
+  const hasAnyLayer = _layers && new Set(_layers.filter(v => v != null)).size >= 1;
+  layerBtn.addEventListener('click', () => {
+    if (!hasAnyLayer) {
+      const colors = cell_active.map(a => a ? GREY_NO_LAYER : '#dddddd');
+      Plotly.restyle(cellPlot, {'marker.color': [colors]}, [POINTS_TRACE]);
+      status.innerHTML = '<i>This cohort has no microdissection layer info — all cells greyed.</i>';
+      return;
+    }
+    const depths = _layers.map(layerToDepth);
+    const validVals = depths.filter((d, i) => cell_active[i] && !isNaN(d));
+    const palette = valuesToViridis(validVals);
+    let pi = 0;
+    const colors = depths.map((d, i) => {
+      if (!cell_active[i]) return '#dddddd';
+      if (!isNaN(d)) return palette[pi++];
+      return GREY_NO_LAYER;
     });
-  }
+    Plotly.restyle(cellPlot, {'marker.color': [colors]}, [POINTS_TRACE]);
+    let lo = Infinity, hi = -Infinity;
+    for (const v of validVals) { if (v < lo) lo = v; if (v > hi) hi = v; }
+    const greyN = depths.filter((d, i) => cell_active[i] && isNaN(d)).length;
+    status.innerHTML = 'Cells coloured by <b>layer of microdissection</b> ('
+      + (validVals.length ? 'viridis ' + layerLabel(lo) + ' → ' + layerLabel(hi) : 'viridis')
+      + (greyN > 0 ? '; ' + greyN + ' cells lack dissection info — shown grey' : '') + ').';
+  });
 }
 
 // ============================================================================
