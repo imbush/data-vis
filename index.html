@@ -237,12 +237,6 @@
     <span class="cohort-name">V1 + ALM – Spatial (MERFISH)</span>
     <span class="cohort-meta"><b>83</b> sections · 46,942 cortical GABA cells · Zhuang et al.</span>
   </div>
-  <div class="note">
-    Tasic-mapped GABAergic cells from Zhuang <i>et al.</i> ABCA MERFISH cohorts in their native
-    CCFv3 coordinates. Allen 25 µm parcellation polygons overlaid; pick a section, switch
-    taxonomy between Tasic subtype / Yao subclass / Yao supertype, type a gene to recolour
-    cells by expression, or use <b>Find area</b> to jump between slices containing a region.
-  </div>
   <div class="viz-row">
     <a class="viz-btn" href="spatial/spatial_v1alm_explorer.html" style="border-color:var(--c-inhib);"><span class="glyph" style="color:var(--c-inhib);">✦</span> Open spatial explorer</a>
   </div>
@@ -253,29 +247,37 @@
 <details class="about">
   <summary>About these explorers</summary>
   <div>
-    <b>Data.</b> Tasic 2018 (mouse VISp + ALM SMART-seq full-transcriptome). Subclass HVG
-    selected on log-CPM via Seurat-v3 variance. Curated curated-gene-set buttons add
-    receptor/neuropeptide overlays not always in the HVG top-N.<br><br>
-    <b>Recompute.</b> Every "recompute" view refits its embedding entirely in the browser
-    on whichever cells / genes you've selected. SVD uses power-iteration with deflation;
-    UMAP is in-browser umap-js; diffusion map is a Laplacian eigenmap; NMF is multiplicative-
-    update (Lee & Seung) with K=4 archetypes embedded in a tetrahedron.<br><br>
-    <b>Metabolism filter.</b> Per-gene Pearson with %ribosomal is computed at build time.
-    The slider hides every gene above a |r| threshold (default 1.0 = off). Most ribo-
-    correlated genes are uniform-expression housekeeping (median subclass-CV 0.027 vs
-    0.477 for the rest of the transcriptome); excluding them removes a technical axis
-    without losing biological structure. The "Regress out %ribo" toggle is the projection-
-    based alternative — present in every recompute view.<br><br>
-    <b>Sharing.</b> Click <code>🔗 Copy link</code> top-right and the URL hash encodes every
-    control. Sharing a URL reproduces the exact view; the page auto-fires the same
-    Recompute you last clicked. Clicking a <code>View:</code> button at the top of an explorer
-    carries the current state across to the next viz.
+    <b>Datasets.</b> Adult V1 + ALM SMART-seq (Tasic et al. 2018); developmental V1
+    10x atlas E11.5 → P56 (Gao et al. 2025, Allen ABC Atlas); patch-seq morpho-electric-
+    transcriptomic cells from VISp (Gouwens et al. 2020) and M1 (Scala et al. 2021),
+    K-NN-imputed onto the Tasic reference and overlaid on its SVD; and Zhuang
+    <i>et al.</i> ABCA MERFISH for the spatial view. Per-subclass HVG selected on
+    log-CPM via Seurat-v3 variance; curated gene-set buttons add receptor / neuropeptide
+    overlays beyond the HVG top-N.<br><br>
+    <b>Four embeddings, recomputed in-browser.</b> Each explorer refits its embedding
+    client-side on whichever cells (subtype / lineage / region / age filters) and genes
+    you select. SVD = power-iteration with deflation; UMAP = umap-js; diffusion map =
+    Laplacian eigenmap; NMF = multiplicative-update (Lee &amp; Seung), K=4 archetypes in a
+    tetrahedron. Switch method from the <b>Plotting Method</b> box; the plots sit on top,
+    controls below.<br><br>
+    <b>Colour.</b> Cells colour by subtype by default (cardinal classes share a hue
+    family across every dataset); the <b>Color Scheme</b> box also colours by QC counts /
+    genes / %ribo, pseudotime, dissection layer, or any gene's expression (hover a gene).
+    In the patch-seq views the overlaid cells recolour from their own transcriptome and
+    re-project live when you recompute.<br><br>
+    <b>Metabolism filter.</b> Per-gene Pearson with %ribosomal is computed at build time;
+    the slider hides genes above a |r| threshold (1.0 = off) and "Regress out %ribo"
+    projects it out — both strip a technical housekeeping axis without losing biological
+    structure.<br><br>
+    <b>Sharing.</b> <code>🔗 Copy link</code> encodes every control in the URL hash, so a
+    shared link reproduces the exact view and re-fires your last recompute.
   </div>
 </details>
 
 <footer>
-Source: Tasic <i>et al.</i> 2018 (mouse VISp + ALM SMART-seq) · Zhuang ABCA-1/3 (MERFISH spatial)
-· CCFv3 25 µm parcellation from Allen Brain Atlas · Yao 2023 taxonomy.
+Data: Tasic et al. 2018 (V1 + ALM SMART-seq) · Gao et al. 2025 (developmental V1, Allen ABC
+Atlas) · Gouwens et al. 2020 &amp; Scala et al. 2021 (patch-seq) · Zhuang ABCA (MERFISH spatial,
+CCFv3 25 µm parcellation) · Yao 2023 taxonomy.
 Built with Plotly, umap-js, scanpy, scikit-image, alphashape, shapely. Self-contained HTML,
 no server.
 </footer>

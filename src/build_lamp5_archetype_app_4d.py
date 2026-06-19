@@ -16,7 +16,7 @@ The app shows:
 
 Output: notebooks/{group}_archetype_explorer_4d.html (open in any browser).
 """
-import os, sys, json, pickle, warnings
+import os, sys, re, json, pickle, warnings
 warnings.filterwarnings('ignore')
 import numpy as np, pandas as pd
 from sklearn.decomposition import non_negative_factorization
@@ -298,8 +298,12 @@ SUBCLASS_PREFIXES = sorted(CARDINAL_HUES.keys(), key=lambda s: -len(s))
 
 def subclass_of(subtype_name):
     """Prefix-match the subtype name against the known cardinal subclasses.
-    Falls back to the first whitespace-separated token, then 'Other'."""
-    s = str(subtype_name)
+    Falls back to the first whitespace-separated token, then 'Other'.
+
+    Strips a leading numeric id prefix first (the Gao 2025 dev atlas labels
+    subtypes like '735_Pvalb Gaba_1') so dev cohorts map to the same cardinal
+    hue families as the Tasic cohorts instead of falling through to grey."""
+    s = re.sub(r'^\d+_', '', str(subtype_name))
     for p in SUBCLASS_PREFIXES:
         if s == p or s.startswith(p + ' '):
             return p
@@ -553,9 +557,17 @@ h2 { text-align: center; width: 100%; }
 /* natural-height column that scrolls — the plots are sized by aspect-ratio
    (below) rather than greedily filling the viewport, so they never collapse to
    a short strip on laptop / narrow screens. */
-.wrap { width: 100%; max-width: 1280px; margin: 0 auto; display: flex;
+.wrap { width: 100%; max-width: 1700px; margin: 0 auto; display: flex;
         flex-direction: column; align-items: stretch; }
 html, body { height: auto !important; min-height: 100%; }
+/* plots on top, control boxes below (flex order within the .wrap column) */
+.wrap > .plot-pair { order: 1; }
+#patchseq-info-box { order: 2; }
+.wrap > .controls-row { order: 3; }   /* the hover-status line */
+.wrap > .viz-stack { order: 4; }
+.wrap > .ctrl-box { order: 5; }
+.wrap > #pole-legend { order: 6; }
+.wrap > footer { order: 7; }
 .viz-nav { justify-content: center; }         /* center the Plotting Method nav */
 /* the 4 labelled control section boxes (styled like the landing cohort cards) */
 .ctrl-box { background: var(--card); border: 1px solid var(--line);

@@ -1419,7 +1419,12 @@ function recomputeSVD(basisIdx, basisLabel) {{
     + 'poles: ' + newPoleTop.map((g, p) => POLE_NAMES_[p] + '=' + g).join(', ');
   lastHoveredCell = null; lastHoveredGene = null;
   // 8. heatmap reflects the new PC1 ordering on the new active cell set
-  renderHeatmap();}}
+  renderHeatmap();
+  // 9. expose the fresh basis so an overlay (e.g. patch-seq MET cells) can
+  //    re-project its own cells onto the new SVD and move with the recompute.
+  window.__svdBasis = {{ basisIdx: basisIdx, panelMean: panelMean, panelStd: panelStd,
+                         V: V, kEmb: K_emb, cmax: cmax }};
+  document.dispatchEvent(new CustomEvent('svd-recomputed'));}}
 
 document.getElementById('recompute-btn').addEventListener('click', () => {{
   const btn = document.getElementById('recompute-btn');

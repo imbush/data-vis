@@ -130,8 +130,8 @@ OVERLAY_JS = r"""
     const trace = {
       x: MET_XYZ.map(p=>p[0]), y: MET_XYZ.map(p=>p[1]), z: MET_XYZ.map(p=>p[2]),
       mode: 'markers', type: 'scatter3d', name: DATASET_LABEL,
-      marker: { size: 6, color: met_default_colors, symbol: 'diamond',
-                line: {width: 0.5, color: 'rgba(40,30,20,0.6)'} },
+      // No marker outline — when zoomed out the outline is all you'd see.
+      marker: { size: 6, color: met_default_colors, symbol: 'diamond', line: {width: 0} },
       hoverinfo: 'text', hovertext: MET_HOVER, showlegend: false,
     };
     Plotly.addTraces(cellPlot, trace);
@@ -139,6 +139,28 @@ OVERLAY_JS = r"""
     // Dim the underlying transcriptomic cells + take them out of hover so the
     // patch-seq diamonds read clearly on top.
     Plotly.restyle(cellPlot, {hoverinfo: 'skip', 'marker.opacity': 0.28}, [POINTS_TRACE]);
+    renderMet();
+  }
+
+  // Re-project the patch-seq cells onto a freshly-recomputed SVD basis so they
+  // move WITH the reference cells (otherwise they'd stay frozen at build-time
+  // coords after a recompute). Exact for SVD: score_k = z·V_k, scaled by cmax.
+  function reprojectMet() {
+    const b = window.__svdBasis;
+    if (!b || !b.V) return;
+    const idx = b.basisIdx, np = idx.length, kEmb = b.kEmb;
+    for (let i = 0; i < MET_N; i++) {
+      const sc = [0, 0, 0];
+      const base = i * MET_GENES;
+      for (let kk = 0; kk < np; kk++) {
+        const j = idx[kk];
+        const z = (met_expr[base + j] / MET_EXPR_SCALE - b.panelMean[kk]) / b.panelStd[kk];
+        for (let k = 0; k < kEmb; k++) sc[k] += z * b.V[k][kk];
+      }
+      MET_XYZ[i] = [ kEmb > 0 ? sc[0] / b.cmax[0] : 0,
+                     kEmb > 1 ? sc[1] / b.cmax[1] : 0,
+                     kEmb > 2 ? sc[2] / b.cmax[2] : 0 ];
+    }
     renderMet();
   }
 
@@ -272,6 +294,7 @@ OVERLAY_JS = r"""
     addMetTrace();
     wireSubtypeSync();
     wireColorSync();
+    document.addEventListener('svd-recomputed', reprojectMet);
     cellPlot.on('plotly_hover', metHover);
     centerAndResize();
     window.addEventListener('resize', () => setTimeout(centerAndResize, 100));

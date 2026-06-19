@@ -190,9 +190,17 @@ h2 { text-align: center; width: 100%; }
 /* natural-height column that scrolls — the plots are sized by aspect-ratio
    (below) rather than greedily filling the viewport, so they never collapse to
    a short strip on laptop / narrow screens. */
-.wrap { width: 100%; max-width: 1280px; margin: 0 auto; display: flex;
+.wrap { width: 100%; max-width: 1700px; margin: 0 auto; display: flex;
         flex-direction: column; align-items: stretch; }
 html, body { height: auto !important; min-height: 100%; }
+/* plots on top, control boxes below (flex order within the .wrap column) */
+.wrap > .plot-pair { order: 1; }
+#patchseq-info-box { order: 2; }
+.wrap > .controls-row { order: 3; }   /* the hover-status line */
+.wrap > .viz-stack { order: 4; }
+.wrap > .ctrl-box { order: 5; }
+.wrap > #pole-legend { order: 6; }
+.wrap > footer { order: 7; }
 .viz-nav { justify-content: center; }         /* center the Plotting Method nav */
 /* the 4 labelled control section boxes (styled like the landing cohort cards) */
 .ctrl-box { background: var(--card); border: 1px solid var(--line);
@@ -1147,7 +1155,12 @@ function recomputeSVD(basisIdx, basisLabel) {
     + 'poles: ' + newPoleTop.map((g, p) => POLE_NAMES_[p] + '=' + g).join(', ');
   lastHoveredCell = null; lastHoveredGene = null;
   // 8. heatmap reflects the new PC1 ordering on the new active cell set
-  renderHeatmap();}
+  renderHeatmap();
+  // 9. expose the fresh basis so an overlay (e.g. patch-seq MET cells) can
+  //    re-project its own cells onto the new SVD and move with the recompute.
+  window.__svdBasis = { basisIdx: basisIdx, panelMean: panelMean, panelStd: panelStd,
+                         V: V, kEmb: K_emb, cmax: cmax };
+  document.dispatchEvent(new CustomEvent('svd-recomputed'));}
 
 document.getElementById('recompute-btn').addEventListener('click', () => {
   const btn = document.getElementById('recompute-btn');
