@@ -387,11 +387,16 @@ def cohort_title(group_name):
 
 
 def cohort_citation(group_name):
-    """Data-source citation for the page footer (HTML)."""
-    dev = ('Data: Di Bella, Habibi et al. / developmental mouse cortex atlas '
-           '(Gao 2025). Inhibitory neurons, E11.5 → P56.')
-    tasic = ('Data: Tasic et al., <i>Nature</i> 2018 — "Shared and distinct '
-             'transcriptomic cell types across neocortical areas" (GEO GSE115746).')
+    """Data-source citation for the page footer (HTML), with a clickable DOI."""
+    dev = ('Data: Gao, van Velthoven, Lee et al., <i>Nature</i> 2025 — '
+           '"Continuous cell-type diversification in mouse visual cortex development" '
+           '(Allen ABC Atlas; E11.5 → P56). '
+           '<a href="https://doi.org/10.1038/s41586-025-09644-1" target="_blank" '
+           'rel="noopener">doi:10.1038/s41586-025-09644-1</a>')
+    tasic = ('Data: Tasic, Yao, Graybuck et al., <i>Nature</i> 2018 — "Shared and distinct '
+             'transcriptomic cell types across neocortical areas" (VISp + ALM; GEO GSE115746). '
+             '<a href="https://doi.org/10.1038/s41586-018-0654-5" target="_blank" '
+             'rel="noopener">doi:10.1038/s41586-018-0654-5</a>')
     if group_name.startswith('DevInhib'):
         return dev
     return tasic
@@ -544,7 +549,7 @@ footer.cite a { color: var(--earth-dark); }
 LAYOUT_CSS = """
 body { align-items: center; }                 /* center the whole column */
 h2 { text-align: center; width: 100%; }
-.hint { text-align: center; max-width: 900px; }
+.hint { text-align: center; max-width: 900px; margin: 6px auto; }
 .wrap { width: 100%; max-width: 1280px; margin: 0 auto; display: flex;
         flex-direction: column; align-items: stretch; flex: 1 1 auto; min-height: 0; }
 .viz-nav { justify-content: center; }         /* center the Plotting Method nav */
@@ -560,11 +565,15 @@ h2 { text-align: center; width: 100%; }
              min-height: 0; align-items: stretch; }
 .plot-box { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column;
             background: var(--card); border: 1px solid var(--line);
-            border-radius: 10px; padding: 8px 10px 10px; min-height: 0; }
+            border-radius: 10px; padding: 8px 10px 10px; min-height: 0;
+            overflow: hidden; }                 /* clip the 3D canvas to the box */
 .plot-box-title { font-size: 16px; font-weight: 600; text-align: center;
                   color: var(--fg); line-height: 1.3; margin: 0 0 6px; flex: 0 0 auto; }
 .plot-box-title b { color: var(--accent); }
-.plot-box > .plotly-graph-div { flex: 1 1 auto; min-height: 0; height: 100% !important; }
+.plot-box > .plotly-graph-div { flex: 1 1 auto; min-height: 0; width: 100% !important;
+            height: 100% !important; max-height: 100%; overflow: hidden; }
+/* breathing room between the plot pair and the line-plot strip beneath it */
+.viz-stack { margin-top: 14px; }
 """
 
 # JS snippet appended to recompute HTMLs when LOG_SCALE_X is True: greys out
