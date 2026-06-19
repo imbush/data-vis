@@ -15,7 +15,7 @@ MET_PKL    = os.path.join(ROOT, 'data', 'patchseq_met_tolias.pkl')
 MORPHO_MAN = os.path.join(SITE, 'patchseq', 'morpho_tolias', '_manifest.json')
 OUT_HTML   = os.path.join(SITE, 'patchseq', 'patchseq_met_tolias_explorer.html')
 
-TITLE = 'MOp Interneuron Patch-seq'
+TITLE = 'M1 – Interneuron Patch-seq'
 CITATION = (
     'Patch-seq data: Scala et al., <i>Nature</i> 2021 — "Phenotypic variation of '
     'transcriptomic cell types in mouse motor cortex" (MOp / M1). '

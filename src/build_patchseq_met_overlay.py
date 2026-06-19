@@ -18,7 +18,7 @@ MET_PKL     = os.path.join(ROOT, 'data', 'patchseq_met_gouwens.pkl')
 MORPHO_MAN  = os.path.join(SITE, 'patchseq', 'morpho_t', '_manifest.json')
 OUT_HTML    = os.path.join(SITE, 'patchseq', 'patchseq_met_gouwens_explorer.html')
 
-TITLE = 'VISp Interneuron Patch-seq'
+TITLE = 'V1 – Interneuron Patch-seq'
 CITATION = (
     'Patch-seq data: Gouwens et al., <i>Cell</i> 2020 — "Integrated Morphoelectric '
     'and Transcriptomic Classification of Cortical GABAergic Cells" (VISp). '

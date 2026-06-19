@@ -11,14 +11,9 @@
     --line: #d9d2c5;
     --card: #ffffff;
     --accent: #1f77b4;
-    --c-lamp5:    #e15759;
-    --c-sst:      #59a14f;
-    --c-pvalb:    #4e79a7;
-    --c-vip:      #f28e2b;
-    --c-sncg:     #b07aa1;
-    --c-allinhib: #2c2c2c;
-    --c-allexc:   #8c6d31;
-    --c-spatial:  #2ab7ca;
+    /* dataset accent system: light brown = interneurons, dark brown = excitatory */
+    --c-inhib:    #c2a06a;
+    --c-exc:      #6e4f29;
     --v-archetype: #2ca02c;
     --v-svd:       #1f77b4;
     --v-umap:      #d62728;
@@ -47,14 +42,8 @@
              border-left: 5px solid var(--accent); transition: border-color .15s ease,
              transform .15s ease, box-shadow .15s ease; }
   .cohort:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.06); transform: translateY(-1px); }
-  .cohort.lamp5    { border-left-color: var(--c-lamp5); }
-  .cohort.sst      { border-left-color: var(--c-sst); }
-  .cohort.pvalb    { border-left-color: var(--c-pvalb); }
-  .cohort.vip      { border-left-color: var(--c-vip); }
-  .cohort.sncg     { border-left-color: var(--c-sncg); }
-  .cohort.allinhib { border-left-color: var(--c-allinhib); }
-  .cohort.allexc   { border-left-color: var(--c-allexc); }
-  .cohort.spatial  { border-left-color: var(--c-spatial); }
+  .cohort.inhib { border-left-color: var(--c-inhib); }
+  .cohort.exc   { border-left-color: var(--c-exc); }
   .cohort-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
   .cohort-name { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
   .cohort-meta { font-size: 13px; color: var(--muted); }
@@ -75,8 +64,6 @@
   .viz-btn.umap .glyph { color: var(--v-umap); }
   .viz-btn.diffmap { border-color: var(--v-diffmap); }
   .viz-btn.diffmap .glyph { color: var(--v-diffmap); }
-  .viz-btn.spatial { border-color: var(--c-spatial); }
-  .viz-btn.spatial .glyph { color: var(--c-spatial); }
 
   details.about { margin-top: 24px; }
   details.about summary { cursor: pointer; color: var(--muted); font-size: 13px;
@@ -95,16 +82,16 @@
 
 <header>
   <h1>Mouse cortex single-cell explorers</h1>
-  <div class="tag">Adult VISp + ALM (Tasic 2018) · Developmental V1 atlas (Gao 2025) · Zhuang ABCA MERFISH spatial</div>
+  <div class="tag">Adult V1 + ALM — Tasic 2018 · Developmental V1 — Gao 2025 · Patch-seq — Gouwens 2020 &amp; Scala 2020 · Spatial MERFISH — Zhuang ABCA</div>
 </header>
 
-<h2>Tasic 2018 V1 &amp; ALM Atlas</h2>
+<h2>Inhibitory neurons</h2>
 <div class="cohorts">
 
-<div class="cohort allinhib">
+<div class="cohort inhib">
   <div class="cohort-head">
-    <span class="cohort-name">V1 — All inhibitory (GABA)</span>
-    <span class="cohort-meta"><b>5,687</b> cells · 60 subtypes · Lamp5 + Sst + Pvalb + Vip + Sncg + Serpinf1</span>
+    <span class="cohort-name">V1 – Interneurons</span>
+    <span class="cohort-meta"><b>5,687</b> cells · 60 subtypes · Tasic et al.</span>
   </div>
   <div class="viz-row">
     <a class="viz-btn archetype" href="allinhib/allinhib_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
@@ -114,23 +101,10 @@
   </div>
 </div>
 
-<div class="cohort allexc">
+<div class="cohort inhib">
   <div class="cohort-head">
-    <span class="cohort-name">V1 — All excitatory (Glutamatergic)</span>
-    <span class="cohort-meta">L2/3 IT · L4 · L5 IT · L5 PT · L6 IT · L6 CT · L6b · NP · CR</span>
-  </div>
-  <div class="viz-row">
-    <a class="viz-btn archetype" href="allexc/allexc_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
-    <a class="viz-btn svd"       href="allexc/allexc_svd_recompute_explorer_3d.html"><span class="glyph">◆</span> SVD</a>
-    <a class="viz-btn umap"      href="allexc/allexc_umap_recompute_explorer_3d.html"><span class="glyph">●</span> UMAP</a>
-    <a class="viz-btn diffmap"   href="allexc/allexc_diffmap_recompute_explorer_3d.html"><span class="glyph">◐</span> Diffmap</a>
-  </div>
-</div>
-
-<div class="cohort allinhib">
-  <div class="cohort-head">
-    <span class="cohort-name">V1 — MGE-lineage inhibitory (Sst + Pvalb)</span>
-    <span class="cohort-meta">faster load · Sst + Pvalb only</span>
+    <span class="cohort-name">V1 – MGE lineage neurons</span>
+    <span class="cohort-meta"><b>2,777</b> cells · 31 subtypes · Tasic et al. · faster</span>
   </div>
   <div class="viz-row">
     <a class="viz-btn archetype" href="allinhib_mge/allinhib_mge_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
@@ -140,10 +114,10 @@
   </div>
 </div>
 
-<div class="cohort allinhib">
+<div class="cohort inhib">
   <div class="cohort-head">
-    <span class="cohort-name">V1 — CGE-lineage inhibitory (Vip + Lamp5 + Sncg)</span>
-    <span class="cohort-meta">faster load · Vip + Lamp5 + Sncg + Serpinf1</span>
+    <span class="cohort-name">V1 – CGE lineage neurons</span>
+    <span class="cohort-meta"><b>2,911</b> cells · 29 subtypes · Tasic et al. · faster</span>
   </div>
   <div class="viz-row">
     <a class="viz-btn archetype" href="allinhib_cge/allinhib_cge_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
@@ -153,10 +127,10 @@
   </div>
 </div>
 
-<div class="cohort allinhib">
+<div class="cohort inhib">
   <div class="cohort-head">
-    <span class="cohort-name">V1 + ALM — All inhibitory (slower)</span>
-    <span class="cohort-meta">V1 + ALM merged · region toggle filters V1 vs ALM vs both · larger HTML (~70 MB)</span>
+    <span class="cohort-name">V1 + ALM – Interneurons</span>
+    <span class="cohort-meta"><b>9,483</b> cells · 60 subtypes · Tasic et al. · slower</span>
   </div>
   <div class="viz-row">
     <a class="viz-btn archetype" href="allinhib_v1alm/allinhib_v1alm_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
@@ -166,10 +140,28 @@
   </div>
 </div>
 
-<div class="cohort allexc">
+</div>
+
+<h2>Excitatory neurons</h2>
+<div class="cohorts">
+
+<div class="cohort exc">
   <div class="cohort-head">
-    <span class="cohort-name">V1 + ALM — All excitatory (slower)</span>
-    <span class="cohort-meta">V1 + ALM merged · region toggle filters V1 vs ALM vs both · larger HTML (~70 MB)</span>
+    <span class="cohort-name">V1 – Glutamatergic Neurons</span>
+    <span class="cohort-meta"><b>7,130</b> cells · 41 subtypes · Tasic et al.</span>
+  </div>
+  <div class="viz-row">
+    <a class="viz-btn archetype" href="allexc/allexc_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
+    <a class="viz-btn svd"       href="allexc/allexc_svd_recompute_explorer_3d.html"><span class="glyph">◆</span> SVD</a>
+    <a class="viz-btn umap"      href="allexc/allexc_umap_recompute_explorer_3d.html"><span class="glyph">●</span> UMAP</a>
+    <a class="viz-btn diffmap"   href="allexc/allexc_diffmap_recompute_explorer_3d.html"><span class="glyph">◐</span> Diffmap</a>
+  </div>
+</div>
+
+<div class="cohort exc">
+  <div class="cohort-head">
+    <span class="cohort-name">V1 + ALM – Glutamatergic Neurons</span>
+    <span class="cohort-meta"><b>11,023</b> cells · 56 subtypes · Tasic et al. · slower</span>
   </div>
   <div class="viz-row">
     <a class="viz-btn archetype" href="allexc_v1alm/allexc_v1alm_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
@@ -181,13 +173,13 @@
 
 </div>
 
-<h2>Developmental atlas (all ages)</h2>
+<h2>Developmental (E11.5 → P56)</h2>
 <div class="cohorts">
 
-<div class="cohort allinhib">
+<div class="cohort inhib">
   <div class="cohort-head">
-    <span class="cohort-name">Developing V1 — MGE-lineage (Pvalb + Sst + chandelier + Chodl + Lamp5 Lhx6)</span>
-    <span class="cohort-meta" id="devinhib_mge_meta">Gao 2025 dev MGE inhibitory · all ages where size permits</span>
+    <span class="cohort-name">Developing V1 – MGE lineage neurons</span>
+    <span class="cohort-meta"><b>18,031</b> cells · 32 subtypes · Gao et al. · slower</span>
   </div>
   <div class="viz-row">
     <a class="viz-btn archetype" href="devinhib_mge/devinhib_mge_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
@@ -197,10 +189,10 @@
   </div>
 </div>
 
-<div class="cohort allinhib">
+<div class="cohort inhib">
   <div class="cohort-head">
-    <span class="cohort-name">Developing V1 — CGE-lineage (Vip + Lamp5 + Sncg)</span>
-    <span class="cohort-meta" id="devinhib_cge_meta">Gao 2025 dev CGE inhibitory · all ages where size permits</span>
+    <span class="cohort-name">Developing V1 – CGE lineage neurons</span>
+    <span class="cohort-meta"><b>15,726</b> cells · 29 subtypes · Gao et al. · slower</span>
   </div>
   <div class="viz-row">
     <a class="viz-btn archetype" href="devinhib_cge/devinhib_cge_nmf_recompute_explorer_4d.html"><span class="glyph">▲</span> Archetype</a>
@@ -210,29 +202,28 @@
   </div>
 </div>
 
-
 </div>
 
-<h2>Cross-modality integration</h2>
+<h2>Patch-seq (morpho-electric-transcriptomic)</h2>
 <div class="cohorts">
 
-<div class="cohort" style="border-left-color: #ad7c3f;">
+<div class="cohort inhib">
   <div class="cohort-head">
-    <span class="cohort-name">Patch-seq MET · Gouwens 2020 on Tasic AllInhib</span>
-    <span class="cohort-meta">4,435 mouse cortical Patch-seq cells (4,270 with AIT mapping, 574 with morphology renders) overlaid on the Tasic V1 SVD; subtype filter inherits via K=15 NN imputation</span>
+    <span class="cohort-name">V1 – Interneuron Patch-seq</span>
+    <span class="cohort-meta"><b>4,435</b> cells · Gouwens et al. · overlaid on the V1 SVD</span>
   </div>
   <div class="viz-row">
-    <a class="viz-btn" href="patchseq/patchseq_met_gouwens_explorer.html" style="border-color:#ad7c3f;"><span class="glyph" style="color:#ad7c3f;">⊙</span> Open Gouwens MET viewer</a>
+    <a class="viz-btn" href="patchseq/patchseq_met_gouwens_explorer.html" style="border-color:var(--c-inhib);"><span class="glyph" style="color:var(--c-inhib);">⊙</span> Open explorer</a>
   </div>
 </div>
 
-<div class="cohort" style="border-left-color: #5f7d3f;">
+<div class="cohort inhib">
   <div class="cohort-head">
-    <span class="cohort-name">Patch-seq MET · Tolias / Scala 2020 on Tasic V1+ALM</span>
-    <span class="cohort-meta">Mouse M1 (motor cortex) Patch-seq inhibitory cells overlaid on the Tasic V1+ALM SVD; permanent side panel renders ephys + morphology feature grids per cell.</span>
+    <span class="cohort-name">M1 – Interneuron Patch-seq</span>
+    <span class="cohort-meta"><b>399</b> cells · Scala et al. · overlaid on the V1 + ALM SVD</span>
   </div>
   <div class="viz-row">
-    <a class="viz-btn" href="patchseq/patchseq_met_tolias_explorer.html" style="border-color:#5f7d3f;"><span class="glyph" style="color:#5f7d3f;">⊙</span> Open Tolias MET viewer</a>
+    <a class="viz-btn" href="patchseq/patchseq_met_tolias_explorer.html" style="border-color:var(--c-inhib);"><span class="glyph" style="color:var(--c-inhib);">⊙</span> Open explorer</a>
   </div>
 </div>
 
@@ -241,10 +232,10 @@
 <h2>Spatial transcriptomics</h2>
 <div class="cohorts">
 
-<div class="cohort spatial">
+<div class="cohort inhib">
   <div class="cohort-head">
-    <span class="cohort-name">V1 + ALM spatial — Zhuang ABCA-1 / ABCA-3</span>
-    <span class="cohort-meta">83 sections · 46,942 cortical GABA cells · CCFv3 region outlines</span>
+    <span class="cohort-name">V1 + ALM – Spatial (MERFISH)</span>
+    <span class="cohort-meta"><b>83</b> sections · 46,942 cortical GABA cells · Zhuang et al.</span>
   </div>
   <div class="note">
     Tasic-mapped GABAergic cells from Zhuang <i>et al.</i> ABCA MERFISH cohorts in their native
@@ -253,7 +244,7 @@
     cells by expression, or use <b>Find area</b> to jump between slices containing a region.
   </div>
   <div class="viz-row">
-    <a class="viz-btn spatial" href="spatial/spatial_v1alm_explorer.html"><span class="glyph">✦</span> Open spatial explorer</a>
+    <a class="viz-btn" href="spatial/spatial_v1alm_explorer.html" style="border-color:var(--c-inhib);"><span class="glyph" style="color:var(--c-inhib);">✦</span> Open spatial explorer</a>
   </div>
 </div>
 
