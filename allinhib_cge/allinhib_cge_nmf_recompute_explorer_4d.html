@@ -307,7 +307,7 @@ footer.cite a { color: var(--earth-dark); }
     <button id="qc-pt" class="qc-btn">Pseudotime</button>
     <button id="qc-region" class="qc-btn" title="Colour each cell by its dissected region (V1 = orange, ALM = purple). Greyed out for single-region cohorts.">Region</button>
     <button id="qc-age" class="qc-btn" title="Colour each cell by its developmental stage (E11.5 → P56). Greyed out for cohorts without age info.">Age</button>
-    <button id="qc-layer" class="qc-btn" title="Colour each cell by its dissected cortical layer (L1 → L6b), depth-encoded on viridis. Cells from multi-layer or pan (e.g. L1-L6) dissections are not layer-specific and shown faint grey. Hidden for cohorts without layer info.">Layer of Microdissection</button>
+    <button id="qc-layer" class="qc-btn" title="Colour each cell by its dissected cortical layer (L1 → L6b), depth-encoded on viridis. Compound dissections (e.g. L2/3-L4) get the midpoint depth. Hidden for cohorts without layer info.">Layer of Microdissection</button>
     <button id="reset-btn">Reset colours (subtype)</button>
   </div>
 </div>
@@ -749,7 +749,11 @@ function layerToDepth(s) {
     if (tok === 'L6B')  return 6.5;
     return NaN;
   }
-  if (s.indexOf('-') >= 0) return NaN;   // multi-layer / pan dissection: not a specific microdissected layer
+  if (s.indexOf('-') >= 0) {
+    const vs = s.split('-').map(lone).filter(v => !isNaN(v));
+    if (vs.length === 0) return NaN;
+    return (Math.min.apply(null, vs) + Math.max.apply(null, vs)) / 2;
+  }
   return lone(s);
 }
 function layerLabel(d) {
@@ -763,7 +767,7 @@ function layerLabel(d) {
 // Layer of Microdissection: always visible. Cells without dissection info
 // render in low-alpha grey instead of being hidden or miscoloured.
 const layerBtn = document.getElementById('qc-layer');
-const GREY_NO_LAYER = 'rgba(170,170,170,0.12)';
+const GREY_NO_LAYER = 'rgba(180,180,180,0.30)';
 if (layerBtn) {
   const _layers = (typeof cell_layer !== 'undefined' && cell_layer) ? cell_layer : null;
   const hasAnyLayer = _layers && new Set(_layers.filter(v => v != null)).size >= 1;
