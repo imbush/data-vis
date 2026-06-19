@@ -287,6 +287,75 @@ OVERLAY_JS = r"""
     try { Plotly.Plots.resize(genePlot); } catch(e) {}
   }
 
+  // ---- Patch-seq Variables colour-by -------------------------------------
+  // A dedicated control box that colours ONLY the patch-seq diamonds by their
+  // own measured / annotated variables (ephys, morphology, Cre line, RNA family,
+  // imputed type, soma depth, KNN distance, …). Base reference cells go grey so
+  // the patch-seq variable reads clearly.
+  function _catPalette(cats) {
+    const pal = {};
+    cats.forEach((c, i) => { pal[c] = 'hsl(' + ((i * 137.508) % 360).toFixed(1) + ',62%,52%)'; });
+    return pal;
+  }
+  function _greyBaseCells() {
+    const n = cellPlot.data[POINTS_TRACE].x.length;
+    Plotly.restyle(cellPlot, {'marker.color': [new Array(n).fill('#e6e6e6')]}, [POINTS_TRACE]);
+  }
+  function metColorByVar(label, values) {
+    const act = metActive();
+    let nact = 0; for (let i = 0; i < MET_N; i++) if (act[i]) nact++; if (!nact) nact = 1;
+    const nums = values.map(v => (v === '' || v == null) ? NaN : (typeof v === 'number' ? v : parseFloat(v)));
+    let numOK = 0; for (let i = 0; i < MET_N; i++) if (act[i] && !isNaN(nums[i])) numOK++;
+    if (numOK / nact > 0.8) {
+      const valid = nums.filter((v, i) => act[i] && !isNaN(v));
+      const pal = (typeof valuesToViridis !== 'undefined') ? valuesToViridis(valid) : valid.map(() => '#888');
+      let p = 0;
+      metCurrentColors = nums.map((v, i) => (act[i] && !isNaN(v)) ? pal[p++] : '#cccccc');
+      let lo = Infinity, hi = -Infinity;
+      for (let i = 0; i < MET_N; i++) if (act[i] && !isNaN(nums[i])) { if (nums[i] < lo) lo = nums[i]; if (nums[i] > hi) hi = nums[i]; }
+      if (typeof setColorKeyGradient !== 'undefined')
+        setColorKeyGradient(label + ' · patch-seq', 'viridis', lo, hi,
+          v => (Math.abs(v) >= 100 ? Math.round(v).toLocaleString() : (Math.round(v * 100) / 100)));
+    } else {
+      const cats = Array.from(new Set(values.filter((v, i) => act[i] && v !== '' && v != null))).sort();
+      const pal = _catPalette(cats);
+      metCurrentColors = values.map((v, i) => (act[i] && pal[v]) ? pal[v] : '#cccccc');
+      if (typeof setColorKeyCats !== 'undefined')
+        setColorKeyCats(label + ' · patch-seq', cats.map(c => ({color: pal[c], label: c})));
+    }
+    _greyBaseCells();
+    renderMet();
+  }
+  function buildPatchseqVarBox() {
+    const wrap = document.querySelector('.wrap');
+    if (!wrap || document.getElementById('patchseq-var-box')) return;
+    const vars = [];
+    if (typeof MET_META_ORDER !== 'undefined' && typeof MET_META !== 'undefined')
+      MET_META_ORDER.forEach(l => { if (MET_META[l]) vars.push([l, MET_META[l]]); });
+    if (typeof MET_EPHYS !== 'undefined' && MET_EPHYS)
+      Object.keys(MET_EPHYS).forEach(l => vars.push([l, MET_EPHYS[l]]));
+    if (typeof MET_MORPH !== 'undefined' && MET_MORPH)
+      Object.keys(MET_MORPH).forEach(l => vars.push([l, MET_MORPH[l]]));
+    if (!vars.length) return;
+    const box = document.createElement('div');
+    box.className = 'ctrl-box'; box.id = 'patchseq-var-box';
+    let html = '<div class="ctrl-box-title">Patch-seq Variables — colour the ' + DATASET_LABEL
+             + ' cells by their own measurements</div><div class="controls-row">';
+    vars.forEach(([l], k) => { html += '<button class="qc-btn psq-var-btn" data-vi="' + k + '">' + l + '</button>'; });
+    html += '</div>';
+    box.innerHTML = html;
+    wrap.appendChild(box);
+    box.querySelectorAll('.psq-var-btn').forEach(b => b.addEventListener('click', () => {
+      box.querySelectorAll('.psq-var-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      const v = vars[parseInt(b.dataset.vi, 10)];
+      metColorByVar(v[0], v[1]);
+    }));
+    // clicking any base colour-scheme button clears the patch-seq-var highlight
+    document.querySelectorAll('.qc-btn:not(.psq-var-btn), #reset-btn').forEach(b =>
+      b.addEventListener('click', () => box.querySelectorAll('.psq-var-btn').forEach(x => x.classList.remove('active'))));
+  }
+
   function boot() {
     if (typeof cellPlot === 'undefined' || !cellPlot.data || !placeBox()) {
       setTimeout(boot, 200); return;
@@ -294,6 +363,7 @@ OVERLAY_JS = r"""
     addMetTrace();
     wireSubtypeSync();
     wireColorSync();
+    buildPatchseqVarBox();
     document.addEventListener('svd-recomputed', reprojectMet);
     cellPlot.on('plotly_hover', metHover);
     centerAndResize();

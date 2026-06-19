@@ -524,9 +524,12 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
 {base.LAYOUT_CSS}
 {base.VIZ_NAV_CSS}
 {base.BUTTON_CSS}
+{base.COLOR_KEY_CSS}
+{base.HOME_LINK_CSS}
 </style>
 </head>
 <body>
+{base.HOME_LINK_HTML}
 <div class="wrap">
 <h2>{base.cohort_title(GROUP_NAME)}</h2>
 <div class="hint">
@@ -614,6 +617,7 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
 </div>
 <script>
 {js_data}
+{base.COLOR_KEY_JS}
 
 const cellPlot = document.getElementById('cell-plot');
 const genePlot = document.getElementById('gene-plot');
@@ -690,6 +694,7 @@ genePlot.on('plotly_hover', function(data) {{
     + '</b> <span style="color:#555">' + tag + '</span> &nbsp; '
     + 'centroid DC1,2,3 = (' + c[0].toFixed(3) + ', ' + c[1].toFixed(3) + ', ' + c[2].toFixed(3) + ') &nbsp; '
     + 'cells recoloured by expression (range ' + (lo/EXPR_SCALE).toFixed(2) + '..' + (hi/EXPR_SCALE).toFixed(2) + ', magma)';
+  setColorKeyGradient(gene_name[j] + ' expression', 'magma', lo/EXPR_SCALE, hi/EXPR_SCALE, v => v.toFixed(2));
   titleCellColor = gene_name[j] + ' expression'; refreshTitles();
 }});
 
@@ -700,7 +705,7 @@ document.getElementById('reset-btn').addEventListener('click', function() {{
   Plotly.restyle(cellPlot, {{'marker.color': [DEFAULT_LOAD_COLORS]}}, [LOADING_TRACE]);
   Plotly.restyle(genePlot, {{'marker.color': [DEFAULT_LOAD_COLORS]}}, [LOADING_TRACE]);
   lastHoveredCell = null; lastHoveredGene = null;
-  status.innerHTML = 'Reset. Hover a cell or gene to colour by expression.';
+  status.innerHTML = 'Reset. Hover a cell or gene to colour by expression.'; clearColorKey();
   titleCellColor = 'subtype'; titleGeneRef = 'strongest DC'; refreshTitles();
 }});
 
@@ -821,7 +826,8 @@ function colorByQC(arr, label, fmt) {{
   Plotly.restyle(cellPlot, {{'marker.color': [cellColors]}}, [POINTS_TRACE]);
   let lo = Infinity, hi = -Infinity;
   for (const v of valid) {{ if (v < lo) lo = v; if (v > hi) hi = v; }}
-  status.innerHTML = 'Cells coloured by <b>' + label + '</b> (viridis; ' + fmt(lo) + ' → ' + fmt(hi) + ')';
+  status.innerHTML = '';
+  setColorKeyGradient(label, 'viridis', lo, hi, fmt);
   titleCellColor = label; refreshTitles();
 }}
 const fmtInt = v => Math.round(v).toLocaleString();
@@ -849,8 +855,8 @@ if (regionBtn) {{
       const swatch = r => `<span style="display:inline-block;width:9px;height:9px;`
         + `background:${{REGION_COLORS[r] || '#888'}};margin:0 3px 0 8px;`
         + `border-radius:50%;vertical-align:middle;"></span>${{r}}`;
-      status.innerHTML = 'Cells coloured by <b>region</b> ('
-        + uniqRegions.sort().map(swatch).join('') + ').';
+      status.innerHTML = '';
+      setColorKeyCats('region', uniqRegions.sort().map(r => ({{color: REGION_COLORS[r] || '#888888', label: r}})));
     }});
   }}
 }}
@@ -931,9 +937,8 @@ if (layerBtn) {{
     let lo = Infinity, hi = -Infinity;
     for (const v of validVals) {{ if (v < lo) lo = v; if (v > hi) hi = v; }}
     const greyN = depths.filter((d, i) => cell_active[i] && isNaN(d)).length;
-    status.innerHTML = 'Cells coloured by <b>layer of microdissection</b> ('
-      + (validVals.length ? 'viridis ' + layerLabel(lo) + ' → ' + layerLabel(hi) : 'viridis')
-      + (greyN > 0 ? '; ' + greyN + ' cells lack dissection info — shown grey' : '') + ').';
+    status.innerHTML = '';
+    if (validVals.length) setColorKeyGradient('layer (microdissection)', 'viridis', lo, hi, layerLabel); else clearColorKey();
   }});
 }}
 

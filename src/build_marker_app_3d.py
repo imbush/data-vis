@@ -35,7 +35,7 @@ prep_cols   = svdmod.prep_cols
 
 GRP_A_COLOR = '#2c6fbb'   # blue
 GRP_B_COLOR = '#cc4125'   # red
-GREY_OFF    = '#e2e2e2'    # cells in neither group recede to this
+GREY_OFF    = 'rgba(0,0,0,0)'   # cells in neither group are fully invisible
 
 from bokeh.palettes import Magma256, Viridis256
 
@@ -300,7 +300,7 @@ def main():
     )
 
     page = f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>{base.cohort_title(GROUP_NAME)} — marker genes</title>
+<html><head><meta charset="utf-8"><title>{base.cohort_title(GROUP_NAME).replace(' Atlas', '')} Marker Gene Finder</title>
 <style>
 body {{ font-family: -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; color: #222; background: #fafafa; }}
 h2 {{ text-align: center; margin: 14px 0 2px; }}
@@ -309,6 +309,15 @@ button {{ font-size: 13px; padding: 4px 10px; }}
 {base.LAYOUT_CSS}
 {base.VIZ_NAV_CSS}
 {base.BUTTON_CSS}
+{base.COLOR_KEY_CSS}
+{base.HOME_LINK_CSS}
+/* big, centered Find-marker-genes control */
+#find-btn {{ font-size: 16px; font-weight: 700; padding: 10px 26px;
+             background: var(--earth, #a9794f); color: #fff; border: none;
+             border-radius: 9px; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.12); }}
+#find-btn:hover {{ background: var(--earth-dark, #875e38); }}
+#marker-results {{ display: flex; flex-direction: column; align-items: center; }}
+.mk-grid {{ margin: 0 auto; }}
 /* group A/B selector */
 .mk-subclass {{ margin: 4px 0; }}
 .mk-subclass-head {{ font-size: 12px; margin-bottom: 2px; }}
@@ -343,8 +352,9 @@ button {{ font-size: 13px; padding: 4px 10px; }}
 </style>
 </head>
 <body>
+{base.HOME_LINK_HTML}
 <div class="wrap">
-<h2>{base.cohort_title(GROUP_NAME)} — marker genes</h2>
+<h2>{base.cohort_title(GROUP_NAME).replace(' Atlas', '')} Marker Gene Finder</h2>
 <div class="hint">Assign subtypes to <b style="color:{GRP_A_COLOR}">Group A</b> and
 <b style="color:{GRP_B_COLOR}">Group B</b>, filter the gene pool, then
 <b>Find marker genes</b> to rank the genes that most cleanly separate the two groups.</div>
@@ -418,6 +428,7 @@ button {{ font-size: 13px; padding: 4px 10px; }}
 </div>
 <script>
 {js_data}
+{base.COLOR_KEY_JS}
 {JS_LOGIC}
 </script>
 </body></html>
@@ -518,14 +529,17 @@ function renderCells() {
 
   if (colorMode === 'group') {
     for (let i = 0; i < N_CELLS; i++) { const g = cellGroup(i); col[i] = g === 'A' ? GRP_A_COLOR : (g === 'B' ? GRP_B_COLOR : GREY_OFF); }
+    setColorKeyCats('', [{color: GRP_A_COLOR, label: 'Group A'}, {color: GRP_B_COLOR, label: 'Group B'}]);
   } else if (colorMode === 'subtype') {
     for (let i = 0; i < N_CELLS; i++) col[i] = active[i] ? cell_default_colors[i] : GREY_OFF;
+    clearColorKey();
   } else if (colorMode === 'counts' || colorMode === 'genes' || colorMode === 'ribo') {
     const src = colorMode === 'counts' ? qc_total : (colorMode === 'genes' ? qc_ngenes : qc_ribo);
     const vs = valuesToViridis(src, active);
     for (let i = 0; i < N_CELLS; i++) col[i] = active[i] ? vs.colorAt(src[i]) : GREY_OFF;
+    setColorKeyGradient(colorModeLabel(), 'viridis', vs.lo, vs.hi, v => (colorMode === 'ribo' ? v.toFixed(1) + '%' : Math.round(v).toLocaleString()));
   } else if (colorMode === 'layer') {
-    if (!cell_layer) { for (let i = 0; i < N_CELLS; i++) col[i] = active[i] ? GREY_NO_LAYER : GREY_OFF; }
+    if (!cell_layer) { for (let i = 0; i < N_CELLS; i++) col[i] = active[i] ? GREY_NO_LAYER : GREY_OFF; clearColorKey(); }
     else {
       const depths = new Array(N_CELLS);
       for (let i = 0; i < N_CELLS; i++) depths[i] = active[i] ? layerToDepth(cell_layer[i]) : NaN;
@@ -537,6 +551,7 @@ function renderCells() {
         else if (isNaN(depths[i])) col[i] = GREY_NO_LAYER;
         else col[i] = viridis[Math.max(0, Math.min(255, Math.round(255*(depths[i]-lo)/range)))];
       }
+      setColorKeyGradient('layer of microdissection', 'viridis', lo, hi, d => 'L' + Math.round(d));
     }
   } else if (colorMode === 'gene' && activeGene >= 0) {
     const j = activeGene;
@@ -545,6 +560,9 @@ function renderCells() {
     const cols = exprToMagmaArr(vals);
     for (let i = 0; i < N_CELLS; i++) col[i] = GREY_OFF;
     for (let k = 0; k < idx.length; k++) col[idx[k]] = cols[k];
+    let glo = Infinity, ghi = -Infinity; for (const v of vals) { if (v < glo) glo = v; if (v > ghi) ghi = v; }
+    if (glo === Infinity) { glo = 0; ghi = 0; }
+    setColorKeyGradient(gene_name[j] + ' expression', 'magma', glo / EXPR_SCALE, ghi / EXPR_SCALE, v => v.toFixed(2));
   }
   Plotly.restyle(cellPlot, {'marker.color': [col]}, [POINTS_TRACE]);
   refreshTitles();

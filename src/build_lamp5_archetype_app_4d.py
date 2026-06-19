@@ -489,11 +489,9 @@ details.header { background: var(--card); border: 1px solid var(--line);
                  border-radius: 6px; padding: 6px 10px; }
 details.header summary { color: var(--muted); }
 details.header[open] summary { color: var(--fg); font-weight: 600; }
-/* Hide the per-cell × per-gene z-expression heatmap; keep the line strip
-   (expression curve) and the cell-type ordering canvas immediately below. */
-.heatmap-canvas-wrap { display: none !important; }
-.heatmap-row { min-height: 0 !important; flex: 0 0 auto !important; }
-.heatmap-row .line-strip-wrap { flex: 0 0 96px !important; }
+/* The Panel HVG z-expression panel (heatmap + line strip + cell-type strip)
+   was judged not useful — hide the whole block in every explorer. */
+.viz-stack { display: none !important; }
 """
 
 # Unified earth-tone button design. Injected LAST in each explorer's <style>
@@ -562,7 +560,8 @@ h2 { text-align: center; width: 100%; }
 html, body { height: auto !important; min-height: 100%; }
 /* plots on top, control boxes below (flex order within the .wrap column) */
 .wrap > .plot-pair { order: 1; }
-#patchseq-info-box { order: 2; }
+.wrap > #color-key { order: 2; }      /* colour-key bar, directly under the plots */
+#patchseq-info-box { order: 3; }
 .wrap > .controls-row { order: 3; }   /* the hover-status line */
 .wrap > .viz-stack { order: 4; }
 .wrap > .ctrl-box { order: 5; }
@@ -592,6 +591,66 @@ html, body { height: auto !important; min-height: 100%; }
 /* breathing room between the plot pair and the line-plot strip beneath it */
 .viz-stack { margin-top: 18px; }
 """
+
+# ---------------------------------------------------------------------------
+# Colour-key bar (shown directly under the plots, replacing the verbose
+# "coloured by … (viridis; lo → hi)" status text). Shared across every explorer.
+# ---------------------------------------------------------------------------
+COLOR_KEY_CSS = """
+#color-key { display: flex; justify-content: center; align-items: center; gap: 10px;
+             flex-wrap: wrap; min-height: 24px; margin: 6px auto 2px; font-size: 12.5px;
+             color: #444; }
+#color-key .ck-title { font-weight: 600; color: #333; }
+#color-key .ck-grad { width: 220px; height: 12px; border-radius: 3px;
+                      border: 1px solid #c4c4c4; }
+#color-key .ck-lab { color: #666; font-variant-numeric: tabular-nums; }
+#color-key .ck-sw { display: inline-flex; align-items: center; gap: 4px; }
+#color-key .ck-dot { width: 11px; height: 11px; border-radius: 50%;
+                     display: inline-block; border: 1px solid rgba(0,0,0,.12); }
+"""
+
+# JS: setColorKeyGradient / setColorKeyCats / clearColorKey. Plain string
+# (single braces) — concatenate into each explorer's <script>.
+COLOR_KEY_JS = """
+const _CK_VIRIDIS = 'linear-gradient(to right,#440154,#414487,#2a788e,#22a884,#7ad151,#fde725)';
+const _CK_MAGMA   = 'linear-gradient(to right,#000004,#3b0f70,#8c2981,#de4968,#fe9f6d,#fcfdbf)';
+function _ckEl() {
+  let e = document.getElementById('color-key');
+  if (!e) {
+    e = document.createElement('div'); e.id = 'color-key';
+    const pair = document.querySelector('.plot-pair');
+    if (pair && pair.parentNode) pair.parentNode.insertBefore(e, pair.nextSibling);
+    else document.querySelector('.wrap').appendChild(e);
+  }
+  return e;
+}
+function setColorKeyGradient(title, palette, lo, hi, fmt) {
+  fmt = fmt || (v => '' + v);
+  const g = palette === 'magma' ? _CK_MAGMA : _CK_VIRIDIS;
+  _ckEl().innerHTML = '<span class="ck-title">' + title + '</span>'
+    + '<span class="ck-lab">' + fmt(lo) + '</span>'
+    + '<span class="ck-grad" style="background:' + g + '"></span>'
+    + '<span class="ck-lab">' + fmt(hi) + '</span>';
+}
+function setColorKeyCats(title, items) {
+  const sw = items.map(it => '<span class="ck-sw"><span class="ck-dot" style="background:'
+    + it.color + '"></span>' + it.label + '</span>').join('');
+  _ckEl().innerHTML = (title ? '<span class="ck-title">' + title + '</span>' : '') + sw;
+}
+function clearColorKey() { _ckEl().innerHTML = ''; }
+"""
+
+# Fixed "← All explorers" link back to the landing page, shown top-left on every
+# explorer (mirror of the top-right Copy-link button). Explorers live in
+# data-vis/<cohort>/… so the landing page is one level up.
+HOME_LINK_CSS = """
+.home-link { position: fixed; top: 10px; left: 12px; z-index: 1000; font-size: 13px;
+             text-decoration: none; color: #5a4326; background: rgba(255,255,255,.9);
+             border: 1px solid #cdbf9f; border-radius: 7px; padding: 5px 11px;
+             font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.home-link:hover { background: #f3ecdc; }
+"""
+HOME_LINK_HTML = '<a class="home-link" href="../index.html">← All explorers</a>'
 
 # JS snippet appended to recompute HTMLs when LOG_SCALE_X is True: greys out
 # both ribo controls and surfaces a tooltip explaining why. Recompute scripts
