@@ -550,8 +550,12 @@ LAYOUT_CSS = """
 body { align-items: center; }                 /* center the whole column */
 h2 { text-align: center; width: 100%; }
 .hint { text-align: center; max-width: 900px; margin: 6px auto; }
+/* natural-height column that scrolls — the plots are sized by aspect-ratio
+   (below) rather than greedily filling the viewport, so they never collapse to
+   a short strip on laptop / narrow screens. */
 .wrap { width: 100%; max-width: 1280px; margin: 0 auto; display: flex;
-        flex-direction: column; align-items: stretch; flex: 1 1 auto; min-height: 0; }
+        flex-direction: column; align-items: stretch; }
+html, body { height: auto !important; min-height: 100%; }
 .viz-nav { justify-content: center; }         /* center the Plotting Method nav */
 /* the 4 labelled control section boxes (styled like the landing cohort cards) */
 .ctrl-box { background: var(--card); border: 1px solid var(--line);
@@ -560,20 +564,21 @@ h2 { text-align: center; width: 100%; }
             letter-spacing: 0.07em; color: var(--muted); font-weight: 700;
             margin: 0 0 8px; text-align: center; }
 .ctrl-box .controls-row { justify-content: center; }
-/* the two plot boxes, side by side, each with a big title above */
-.plot-pair { display: flex; flex-direction: row; gap: 14px; flex: 1 1 auto;
-             min-height: 0; align-items: stretch; }
+/* two plot boxes side by side, each ~square; stack on narrow screens */
+.plot-pair { display: flex; flex-direction: row; gap: 14px; align-items: flex-start; }
 .plot-box { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column;
             background: var(--card); border: 1px solid var(--line);
-            border-radius: 10px; padding: 8px 10px 10px; min-height: 0;
-            overflow: hidden; }                 /* clip the 3D canvas to the box */
+            border-radius: 10px; padding: 8px 10px 10px; overflow: hidden; }
 .plot-box-title { font-size: 16px; font-weight: 600; text-align: center;
                   color: var(--fg); line-height: 1.3; margin: 0 0 6px; flex: 0 0 auto; }
 .plot-box-title b { color: var(--accent); }
-.plot-box > .plotly-graph-div { flex: 1 1 auto; min-height: 0; width: 100% !important;
-            height: 100% !important; max-height: 100%; overflow: hidden; }
+/* aspect-ratio gives the 3D canvas a square, definite height from its width,
+   so each plot stays squarish regardless of viewport height. */
+.plot-box > .plotly-graph-div { width: 100% !important; aspect-ratio: 1 / 1;
+            height: auto !important; min-height: 300px; overflow: hidden; }
+@media (max-width: 880px) { .plot-pair { flex-direction: column; } }
 /* breathing room between the plot pair and the line-plot strip beneath it */
-.viz-stack { margin-top: 14px; }
+.viz-stack { margin-top: 18px; }
 """
 
 # JS snippet appended to recompute HTMLs when LOG_SCALE_X is True: greys out

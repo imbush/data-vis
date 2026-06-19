@@ -175,7 +175,7 @@ OVERLAY_JS = r"""
     + '</div>';
   const boxCss = document.createElement('style');
   boxCss.textContent =
-      '#patchseq-info-box #psq-body { display: flex; align-items: flex-start; }'
+      '#patchseq-info-box #psq-body { display: flex; align-items: flex-start; flex-wrap: wrap; }'
     + '#patchseq-info-box .psq-imgwrap { flex: 0 0 300px; max-width: 300px; aspect-ratio: 4/3;'
     + '  background: #f7f5f1; border: 1px solid var(--line); border-radius: 6px;'
     + '  display: flex; align-items: center; justify-content: center; overflow: hidden; }'

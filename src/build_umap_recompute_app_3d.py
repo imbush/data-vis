@@ -219,9 +219,9 @@ def main():
         fig.update_layout(
             title=dict(text=title, x=0.5, xanchor='center', font=dict(size=13)),
             scene=dict(
-                xaxis=dict(visible=False, range=[-lim, lim]),
-                yaxis=dict(visible=False, range=[-lim, lim]),
-                zaxis=dict(visible=False, range=[-lim, lim]),
+                xaxis=dict(visible=False, range=[-lim, lim], autorange=False),
+                yaxis=dict(visible=False, range=[-lim, lim], autorange=False),
+                zaxis=dict(visible=False, range=[-lim, lim], autorange=False),
                 aspectmode='cube', dragmode='orbit',
                 camera=dict(eye=dict(x=1.8, y=1.8, z=1.4),
                             center=dict(x=0, y=0, z=0), up=dict(x=0, y=0, z=1))),
