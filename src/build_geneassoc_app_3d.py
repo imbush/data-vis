@@ -69,14 +69,15 @@ def main():
     gene_load3 = (Zall.T @ U) / S
     print(f'  geneassoc: SVD on {Xp.shape[0]} cells × {int(in_panel.sum())} panel genes')
 
-    def fill_cube(M, robust=False):
-        if robust:
-            m = np.percentile(np.abs(M), 99.5, axis=0) + 1e-9
-            return np.clip(M / m, -1.0, 1.0)
-        m = np.max(np.abs(M), axis=0) + 1e-9
-        return M / m
-    cell_xyz = fill_cube(cell_scores, robust=True)
-    gene_xyz = fill_cube(gene_load3)
+    def center_cube(M):
+        # centre the cloud on its (robust) median so the scene origin sits in the
+        # middle of the points — orbiting then rotates the cloud in place instead
+        # of swinging it off-screen — then robust-scale to fill the [-1,1] cube.
+        M = M - np.median(M, axis=0)
+        s = np.percentile(np.abs(M), 99.5, axis=0) + 1e-9
+        return np.clip(M / s, -1.0, 1.0)
+    cell_xyz = center_cube(cell_scores)
+    gene_xyz = center_cube(gene_load3)
 
     cats = sorted(set(subs.tolist()))
     subtype_palette = base.build_subtype_palette(cats)
@@ -180,6 +181,32 @@ def main():
     gene_datalist = ('<datalist id="gene-datalist">'
                      + ''.join(f'<option value="{g}">' for g in gene_names) + '</datalist>')
 
+    # subtype subset checkboxes, grouped by subclass (all checked by default)
+    subtype_counts = {c: int(np.sum(subs == c)) for c in cats}
+    subtype_to_subclass = {}
+    for s, csc in zip(subs, cell_subclass):
+        subtype_to_subclass.setdefault(s, csc)
+    subclass_order = sorted(set(cell_subclass.tolist()))
+    by_subclass = {csc: [c for c in cats if subtype_to_subclass.get(c) == csc]
+                   for csc in subclass_order}
+    sub_rows = []
+    for csc in subclass_order:
+        ss = by_subclass[csc]
+        if not ss:
+            continue
+        total = sum(subtype_counts[c] for c in ss)
+        chips = ''.join(
+            f'<label class="ga-sub"><input type="checkbox" class="ga-sub-cb" data-sub="{c}" checked> '
+            f'<span style="color:{subtype_palette[c]}">●</span> {c} '
+            f'<span class="ct">({subtype_counts[c]})</span></label>' for c in ss)
+        sub_rows.append(
+            f'<div class="ga-subclass"><div class="ga-subclass-head"><b>{csc}</b> '
+            f'<span class="ct">({total} cells)</span> '
+            f'<button class="ga-bulk" data-subclass="{csc}" data-on="1">all</button>'
+            f'<button class="ga-bulk" data-subclass="{csc}" data-on="0">none</button></div>'
+            f'<div class="ga-subclass-subs">{chips}</div></div>')
+    subtype_checkbox_html = ''.join(sub_rows)
+
     title = base.cohort_title(GROUP_NAME).replace(' Atlas', '')
 
     js_data = (
@@ -249,6 +276,14 @@ button {{ font-size: 13px; padding: 4px 10px; }}
 .ga-val {{ font-size: 11px; color: var(--muted); text-align: right;
            font-variant-numeric: tabular-nums; }}
 .ga-foc {{ color: var(--accent); font-weight: 700; }}
+.ga-subclass {{ margin: 4px 0; width: 100%; }}
+.ga-subclass-head {{ font-size: 12px; margin-bottom: 2px; text-align: center; }}
+.ga-subclass-head .ct {{ color: var(--muted); font-weight: 400; }}
+.ga-bulk {{ font-size: 11px; padding: 1px 6px; margin-left: 4px; }}
+.ga-subclass-subs {{ display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }}
+.ga-sub {{ display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px;
+           border: 1px solid var(--line); border-radius: 12px; font-size: 12px; background: var(--card); }}
+.ga-sub .ct {{ color: var(--muted); }}
 </style>
 </head>
 <body>
@@ -301,6 +336,16 @@ or <b>mutual information</b> (any dependence). Hover a result to recolour the ce
 </div>
 
 <div class="ctrl-box">
+  <div class="ctrl-box-title">Filter Which Cell-types are Included</div>
+  <div class="controls-row">
+    <button id="ga-sub-all">all</button>
+    <button id="ga-sub-none">none</button>
+    <span class="label" id="ga-sub-count"></span>
+  </div>
+  <div class="controls-row" style="display:block;">{subtype_checkbox_html}</div>
+</div>
+
+<div class="ctrl-box">
   <div class="ctrl-box-title">Filter Which Genes are Considered</div>
   <div class="controls-row"><span class="label">Gene set:</span>{set_buttons_html}
     <span class="label" style="margin-left:14px;">Considered:</span>
@@ -347,6 +392,10 @@ const gene_xyz = (function(){ const a=new Array(N_GENES); for(let j=0;j<N_GENES;
 let colorMode = 'subtype';   // subtype | counts | genes | ribo | layer | gene
 let activeGene = -1;         // gene index when colorMode === 'gene'
 let focusGene = -1;
+let selectedSubs = new Set(SUBTYPE_CATS);   // which cell-types are included
+function cellActive(i) { return selectedSubs.has(cell_subtype[i]); }
+function getSel() { const s = []; for (let i = 0; i < N_CELLS; i++) if (cellActive(i)) s.push(i); return s; }
+const INVIS = 'rgba(0,0,0,0)';
 let metric = 'corr';         // corr | mi
 let geneActive = new Array(N_GENES).fill(true);
 let assoc = null;            // Float64Array of association values to focusGene
@@ -382,7 +431,7 @@ function refreshTitles(){
   const ct=document.getElementById('cell-plot-title'), gt=document.getElementById('gene-plot-title');
   let cl = colorMode==='gene' ? (gene_name[activeGene]+' expression')
         : (colorMode==='subtype'?'subtype':(colorMode==='counts'?'total counts':(colorMode==='genes'?'genes detected':(colorMode==='ribo'?'% ribosomal':'layer'))));
-  if (ct) ct.innerHTML='Cells on <b>SVD</b> axes · coloured by <b>'+cl+'</b> · n='+N_CELLS.toLocaleString();
+  if (ct) ct.innerHTML='Cells on <b>SVD</b> axes · coloured by <b>'+cl+'</b> · n='+getSel().length.toLocaleString();
   const gl = focusGene>=0 ? (metric==='corr'?'correlation to ':'mutual info with ')+gene_name[focusGene] : 'strongest PC';
   if (gt) gt.innerHTML='Genes on <b>SVD</b> axes · coloured by <b>'+gl+'</b>';
 }
@@ -390,27 +439,31 @@ function refreshTitles(){
 // ---- cell colouring --------------------------------------------------------
 function renderCells(){
   const col=new Array(N_CELLS);
+  const act=new Array(N_CELLS); for(let i=0;i<N_CELLS;i++) act[i]=cellActive(i);
   if (colorMode==='subtype'){ for(let i=0;i<N_CELLS;i++) col[i]=cell_default_colors[i]; clearColorKey(); }
   else if (colorMode==='counts'||colorMode==='genes'||colorMode==='ribo'){
     const src=colorMode==='counts'?qc_total:(colorMode==='genes'?qc_ngenes:qc_ribo);
-    const vs=valuesToViridis(src,null);
+    const vs=valuesToViridis(src,act);
     for(let i=0;i<N_CELLS;i++) col[i]=vs.colorAt(src[i]);
     setColorKeyGradient(colorMode==='counts'?'total counts':(colorMode==='genes'?'genes detected':'% ribosomal'),'viridis',vs.lo,vs.hi,v=>(colorMode==='ribo'?v.toFixed(1)+'%':Math.round(v).toLocaleString()));
   } else if (colorMode==='layer'){
     if(!cell_layer){ for(let i=0;i<N_CELLS;i++) col[i]=GREY_NO_LAYER; clearColorKey(); }
-    else { const d=cell_layer.map(layerToDepth); const valid=d.filter(v=>!isNaN(v));
+    else { const d=cell_layer.map(layerToDepth); const valid=d.filter((v,i)=>act[i]&&!isNaN(v));
       let lo=1,hi=6.5; if(valid.length){lo=Math.min.apply(null,valid);hi=Math.max.apply(null,valid);}
       const range=(hi>lo)?(hi-lo):1;
       for(let i=0;i<N_CELLS;i++) col[i]=isNaN(d[i])?GREY_NO_LAYER:viridis[Math.max(0,Math.min(255,Math.round(255*(d[i]-lo)/range)))];
       setColorKeyGradient('layer of microdissection','viridis',lo,hi,x=>'L'+Math.round(x)); }
   } else if (colorMode==='gene' && activeGene>=0){
-    const j=activeGene; const vals=new Array(N_CELLS);
-    for(let i=0;i<N_CELLS;i++) vals[i]=expr_matrix[i*N_GENES+j];
+    const j=activeGene; const vals=[],idx=[];
+    for(let i=0;i<N_CELLS;i++) if(act[i]){ vals.push(expr_matrix[i*N_GENES+j]); idx.push(i); }
     const cols=exprToMagmaArr(vals);
-    for(let i=0;i<N_CELLS;i++) col[i]=cols[i];
+    for(let i=0;i<N_CELLS;i++) col[i]=INVIS;
+    for(let k=0;k<idx.length;k++) col[idx[k]]=cols[k];
     let lo=Infinity,hi=-Infinity; for(const v of vals){if(v<lo)lo=v;if(v>hi)hi=v;}
+    if(lo===Infinity){lo=0;hi=0;}
     setColorKeyGradient(gene_name[j]+' expression','magma',lo/EXPR_SCALE,hi/EXPR_SCALE,v=>v.toFixed(2));
   }
+  for(let i=0;i<N_CELLS;i++) if(!act[i]) col[i]=INVIS;
   Plotly.restyle(cellPlot,{'marker.color':[col]},[POINTS_TRACE]);
   refreshTitles();
 }
@@ -470,41 +523,48 @@ stdSlider.addEventListener('input',applyGeneFilter);
 
 // ---- association compute ---------------------------------------------------
 function computeCorr(f){
-  // Pearson r of focus gene f vs every gene across all cells
+  // Pearson r of focus gene f vs every gene across the SELECTED cells
+  const sel=getSel(), N=sel.length;
   const r=new Float64Array(N_GENES);
-  // focus column mean/std
-  let sf=0; for(let i=0;i<N_CELLS;i++) sf+=expr_matrix[i*N_GENES+f]; const mf=sf/N_CELLS;
-  let vf=0; const fz=new Float64Array(N_CELLS);
-  for(let i=0;i<N_CELLS;i++){ const x=expr_matrix[i*N_GENES+f]-mf; fz[i]=x; vf+=x*x; }
+  let sf=0; for(let a=0;a<N;a++) sf+=expr_matrix[sel[a]*N_GENES+f]; const mf=sf/N;
+  const fz=new Float64Array(N); let vf=0;
+  for(let a=0;a<N;a++){ const x=expr_matrix[sel[a]*N_GENES+f]-mf; fz[a]=x; vf+=x*x; }
   const sdf=Math.sqrt(vf)||1;
-  // per gene
   const sumj=new Float64Array(N_GENES), sumjj=new Float64Array(N_GENES), cross=new Float64Array(N_GENES);
-  for(let i=0;i<N_CELLS;i++){ const base=i*N_GENES, fzi=fz[i];
-    for(let j=0;j<N_GENES;j++){ const e=expr_matrix[base+j]; sumj[j]+=e; sumjj[j]+=e*e; cross[j]+=fzi*e; } }
-  for(let j=0;j<N_GENES;j++){ const mj=sumj[j]/N_CELLS; const vj=sumjj[j]-N_CELLS*mj*mj;
+  for(let a=0;a<N;a++){ const base=sel[a]*N_GENES, fza=fz[a];
+    for(let j=0;j<N_GENES;j++){ const e=expr_matrix[base+j]; sumj[j]+=e; sumjj[j]+=e*e; cross[j]+=fza*e; } }
+  for(let j=0;j<N_GENES;j++){ const mj=sumj[j]/N; const vj=sumjj[j]-N*mj*mj;
     const sdj=Math.sqrt(vj)||1; r[j]=cross[j]/(sdf*sdj); }
   return r;
 }
 function computeMI(f){
-  const mi=new Float64Array(N_GENES);
-  const B=MI_BINS;
-  const pf=new Float64Array(B); for(let i=0;i<N_CELLS;i++) pf[binMat[i*N_GENES+f]]++;
+  const sel=getSel(), N=sel.length;
+  const mi=new Float64Array(N_GENES); const B=MI_BINS;
+  const pf=new Float64Array(B); for(let a=0;a<N;a++) pf[binMat[sel[a]*N_GENES+f]]++;
   const joint=new Float64Array(B*B);
-  // accumulate joint hist for every gene in one pass per gene-block
-  // (loop cells outer, genes inner into a big joint tensor is too big; do per gene)
   for(let j=0;j<N_GENES;j++){
     if(!geneActive[j] && j!==f){ mi[j]=0; continue; }
-    joint.fill(0);
-    const pj=new Float64Array(B);
-    for(let i=0;i<N_CELLS;i++){ const bf=binMat[i*N_GENES+f], bj=binMat[i*N_GENES+j]; joint[bf*B+bj]++; pj[bj]++; }
+    joint.fill(0); const pj=new Float64Array(B);
+    for(let a=0;a<N;a++){ const i=sel[a]; const bf=binMat[i*N_GENES+f], bj=binMat[i*N_GENES+j]; joint[bf*B+bj]++; pj[bj]++; }
     let m=0;
     for(let a=0;a<B;a++){ if(pf[a]===0) continue;
       for(let b=0;b<B;b++){ const c=joint[a*B+b]; if(c===0||pj[b]===0) continue;
-        const pab=c/N_CELLS; m += pab*Math.log2(pab/((pf[a]/N_CELLS)*(pj[b]/N_CELLS))); } }
+        const pab=c/N; m += pab*Math.log2(pab/((pf[a]/N)*(pj[b]/N))); } }
     mi[j]=m;
   }
   return mi;
 }
+function onSubsChange(){
+  selectedSubs=new Set(); document.querySelectorAll('.ga-sub-cb:checked').forEach(cb=>selectedSubs.add(cb.dataset.sub));
+  const e=document.getElementById('ga-sub-count'); if(e) e.textContent=getSel().length.toLocaleString()+' cells included';
+  renderCells(); if(focusGene>=0) computeAssoc();
+}
+document.querySelectorAll('.ga-sub-cb').forEach(cb=>cb.addEventListener('change',onSubsChange));
+document.querySelectorAll('.ga-bulk').forEach(b=>b.addEventListener('click',()=>{ const on=b.dataset.on==='1', csc=b.dataset.subclass;
+  document.querySelectorAll('.ga-subclass').forEach(block=>{ if(block.querySelector('.ga-subclass-head b').textContent!==csc) return;
+    block.querySelectorAll('.ga-sub-cb').forEach(cb=>cb.checked=on); }); onSubsChange(); }));
+document.getElementById('ga-sub-all').addEventListener('click',()=>{ document.querySelectorAll('.ga-sub-cb').forEach(cb=>cb.checked=true); onSubsChange(); });
+document.getElementById('ga-sub-none').addEventListener('click',()=>{ document.querySelectorAll('.ga-sub-cb').forEach(cb=>cb.checked=false); onSubsChange(); });
 function computeAssoc(){
   if(focusGene<0) return;
   const gs=document.getElementById('ga-status');
@@ -580,6 +640,7 @@ genePlot.on('plotly_hover',function(data){ if(!data.points||!data.points.length)
 
 function boot(){
   applyGeneFilter();
+  const e=document.getElementById('ga-sub-count'); if(e) e.textContent=getSel().length.toLocaleString()+' cells included';
   renderCells();
   refreshTitles();
   setTimeout(function(){ try{ Plotly.Plots.resize(cellPlot); Plotly.Plots.resize(genePlot); renderCells(); }catch(e){} },250);

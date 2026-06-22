@@ -86,8 +86,13 @@ def main():
             return np.clip(M / m, -1.0, 1.0)
         m = np.max(np.abs(M), axis=0) + 1e-9
         return M / m
-    cell_xyz = fill_cube(cell_scores, robust=True)
-    gene_xyz = fill_cube(gene_load3)
+    # centre each cloud on its median so the scene origin sits in the middle of
+    # the points (rotation orbits the cloud instead of swinging it off-screen)
+    def _center(M):
+        M = M - np.median(M, axis=0)
+        return np.clip(M, -1.0, 1.0)
+    cell_xyz = _center(fill_cube(cell_scores, robust=True))
+    gene_xyz = _center(fill_cube(gene_load3))
 
     Vpanel = Vt.T
     panel_genes_list = [g for g, k in zip(gene_names, in_panel) if k]

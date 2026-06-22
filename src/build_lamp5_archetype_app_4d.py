@@ -500,7 +500,8 @@ details.header[open] summary { color: var(--fg); font-weight: 600; }
 # generous spacing, and active/selected states in the warm clay palette.
 BUTTON_CSS = """
 /* roomier control rows so buttons never touch */
-.controls-row { gap: 9px !important; row-gap: 8px !important; }
+.controls-row { display: flex; align-items: center; flex-wrap: wrap;
+                gap: 9px !important; row-gap: 8px !important; }
 .ctrl-box .controls-row { padding: 2px 0; }
 
 /* one shared look for every pill button */
