@@ -1,0 +1,308 @@
+/* copy-link snippet v5 — patches a "Copy link" button into deployed explorers,
+ * AND makes the cross-explorer View: nav-bar carry the current UI state across.
+ *
+ * Click "Copy link" → serialises every UI control into a base64 JSON blob in
+ * the URL hash. On load, the hash is parsed, each control is restored, and
+ * the last Recompute button is re-fired so the embedding refits.
+ *
+ * Click any View: <other-viz> link → intercept, encode current state, jump
+ * to the target HTML with `#s=...` so the new explorer opens in the same
+ * subset / region / filter / gene-set you were already looking at.
+ *
+ * v3 also hides the biplots behind a "Loading saved view…" overlay while the
+ * state-restore + auto-recompute runs, so users don't see the full-cohort
+ * fit flash by before the saved subset's recompute kicks in.
+ */
+(function() {
+  if (window.__copyLinkInstalled) return;
+  window.__copyLinkInstalled = true;
+
+  const KEY = 's';
+
+  // ---- "Loading saved view…" overlay (kills the full-cohort flash) -------
+  function makeOverlay() {
+    if (document.getElementById('__copylink_overlay')) return;
+    const css = document.createElement('style');
+    css.textContent =
+      '#__copylink_overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.96);'
+      + ' z-index: 99998; display: flex; align-items: center; justify-content: center;'
+      + ' font: 14px ui-sans-serif, -apple-system, sans-serif; color: #444;'
+      + ' transition: opacity .25s ease; }'
+      + '#__copylink_overlay.fading { opacity: 0; }'
+      + '#__copylink_overlay .spin { width: 22px; height: 22px; margin-right: 12px;'
+      + ' border: 2.5px solid #ddd; border-top-color: #1f77b4; border-radius: 50%;'
+      + ' animation: __cl_spin .8s linear infinite; }'
+      + '@keyframes __cl_spin { to { transform: rotate(360deg); } }';
+    document.head.appendChild(css);
+    const ov = document.createElement('div');
+    ov.id = '__copylink_overlay';
+    ov.innerHTML = '<div class="spin"></div>Loading saved view…';
+    document.documentElement.appendChild(ov);
+  }
+  function dropOverlay(delay) {
+    const ov = document.getElementById('__copylink_overlay');
+    if (!ov) return;
+    setTimeout(() => {
+      ov.classList.add('fading');
+      setTimeout(() => ov.remove(), 350);
+    }, delay || 0);
+  }
+  // Decide UP-FRONT whether to show the overlay — before any biplot renders.
+  const _hasHash    = (location.hash || '').indexOf(KEY + '=') >= 0;
+  const _hasDefault = (window.__autoRecomputeDefault === true);
+  if (_hasHash || _hasDefault) makeOverlay();
+
+  function gather() {
+    const s = { v: 2, btns: {}, inputs: {}, toggles: {},
+                recompute: window.__lastRecompute || 'panel' };
+    // Subtype checkboxes packed as a bitmask (1 bit each, document order) — this
+    // is the dominant length cost; a 60-subtype dict (~800 chars) becomes ~12.
+    const cbs = Array.prototype.slice.call(
+      document.querySelectorAll('input[type=checkbox][data-sub]'));
+    if (cbs.length) {
+      const bytes = new Uint8Array(Math.ceil(cbs.length / 8));
+      cbs.forEach((cb, i) => { if (cb.checked) bytes[i >> 3] |= (1 << (i & 7)); });
+      s.sb = bytesToB64(bytes); s.sn = cbs.length;
+    }
+    // single-active button groups — collect by parent container class.
+    // The .age-toggle parent matches "toggle" but holds a MULTI-active
+    // set of chips, so we skip it here and capture it explicitly below.
+    document.querySelectorAll('button.active').forEach(btn => {
+      const p = btn.parentElement;
+      if (!p) return;
+      const pc = p.className || '';
+      if (/\bage-toggle\b/.test(pc)) return;
+      const cls = pc.split(' ').filter(c =>
+        /toggle|btns|btn-row|axis-row|order-row|grp-row|controls/.test(c))[0];
+      if (!cls) return;
+      const val = btn.dataset.region || btn.dataset.axis ||
+                  btn.dataset.order  || btn.dataset.act   ||
+                  btn.dataset.grp    || btn.textContent.trim();
+      s.btns[cls] = val;
+    });
+    // ids: inputs/selects with values, checkboxes without data-sub
+    document.querySelectorAll('input[id], select[id]').forEach(el => {
+      if (el.dataset.sub) return;
+      if (el.type === 'checkbox') s.toggles[el.id] = el.checked ? 1 : 0;
+      else if (el.value !== undefined) s.inputs[el.id] = el.value;
+    });
+    // Multi-state age chips (.age-toggle .ag-btn.active) — pure JS state in
+    // window.activeAges, not captured by the single-active button loop above.
+    try {
+      if (typeof activeAges !== 'undefined' && activeAges instanceof Set) {
+        s.activeAges = Array.from(activeAges);
+      }
+    } catch (e) {}
+    // Heatmap cell-type drag-reorder — pure JS state in window.celltypeOrder
+    // (no .active class to scrape from the DOM).
+    try {
+      if (typeof celltypeOrder !== 'undefined' && celltypeOrder &&
+          celltypeOrder.length) {
+        s.celltypeOrder = celltypeOrder.slice();
+      }
+    } catch (e) {}
+    return s;
+  }
+
+  function apply(s) {
+    if (!s) return;
+    if (s.sb != null) {
+      const bytes = b64ToBytes(s.sb);
+      const cbs = Array.prototype.slice.call(
+        document.querySelectorAll('input[type=checkbox][data-sub]'));
+      cbs.forEach((cb, i) => { cb.checked = !!(bytes[i >> 3] & (1 << (i & 7))); });
+    } else if (s.subs) {   // v4 and earlier: subtype dict
+      document.querySelectorAll('input[type=checkbox][data-sub]').forEach(cb => {
+        const k = cb.dataset.sub;
+        if (k in s.subs) cb.checked = !!s.subs[k];
+      });
+    }
+    if (s.inputs) {
+      Object.entries(s.inputs).forEach(([id, v]) => {
+        const el = document.getElementById(id);
+        if (el && el.value !== undefined) {
+          el.value = v;
+          el.dispatchEvent(new Event('input',  { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+    }
+    if (s.toggles) {
+      Object.entries(s.toggles).forEach(([id, v]) => {
+        const el = document.getElementById(id);
+        if (el && el.type === 'checkbox') {
+          el.checked = !!v;
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+    }
+    if (s.btns) {
+      Object.entries(s.btns).forEach(([cls, val]) => {
+        const grp = document.querySelector('.' + cls);
+        if (!grp) return;
+        grp.querySelectorAll('button').forEach(b => {
+          const v = b.dataset.region || b.dataset.axis ||
+                    b.dataset.order  || b.dataset.act   ||
+                    b.dataset.grp    || b.textContent.trim();
+          if (v === val) b.click();
+        });
+      });
+    }
+    // Multi-state age chips: replace the Set's contents and reconcile the
+    // .active class on every chip so the visual state matches.
+    if (s.activeAges && Array.isArray(s.activeAges)) {
+      try {
+        if (typeof activeAges !== 'undefined' && activeAges instanceof Set) {
+          activeAges.clear();
+          s.activeAges.forEach(a => activeAges.add(a));
+          document.querySelectorAll('.age-toggle .ag-btn').forEach(b => {
+            const a = b.dataset.age;
+            if (a == null) return;
+            if (activeAges.has(a)) b.classList.add('active');
+            else b.classList.remove('active');
+          });
+        }
+      } catch (e) {}
+    }
+    // Heatmap cell-type drag-reorder: restore before the change-event-driven
+    // re-render below picks it up to lay out the chips.
+    if (s.celltypeOrder && Array.isArray(s.celltypeOrder)) {
+      try {
+        if (typeof celltypeOrder !== 'undefined') celltypeOrder = s.celltypeOrder.slice();
+      } catch (e) {}
+    }
+    // fire change on every subtype checkbox so dependent renders run
+    document.querySelectorAll('input[type=checkbox][data-sub]').forEach(cb => {
+      cb.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    // Trigger the explorer's Recompute so the embedding refits to the restored
+    // subtype / region / gene-filter state. Without this the controls show the
+    // shared view but the cell positions still reflect the page's default fit.
+    // Saved state remembers whether a recompute ran and which button was last
+    // used; default is the panel-HVG recompute.
+    const wantRecompute = (s.recompute !== 0);  // default to true
+    if (wantRecompute) {
+      const which = s.recompute === 'genes' ? 'recompute-genes-btn' : 'recompute-btn';
+      const btn = document.getElementById(which) || document.getElementById('recompute-btn');
+      if (btn && !btn.disabled) {
+        // Defer so the change-event-driven state updates above settle first.
+        setTimeout(() => btn.click(), 60);
+        // Drop the "Loading saved view…" overlay shortly after recompute finishes.
+        setTimeout(() => dropOverlay(), 1500);
+        return;
+      }
+    }
+    dropOverlay();   // no recompute needed → reveal immediately
+  }
+
+  function bytesToB64(bytes) {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function b64ToBytes(b64) {
+    b64 = b64.replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+  function enc(o) {
+    const json = JSON.stringify(o);
+    let b64 = btoa(unescape(encodeURIComponent(json)));
+    b64 = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return b64;
+  }
+  function dec(b64) {
+    try {
+      b64 = b64.replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      return JSON.parse(decodeURIComponent(escape(atob(b64))));
+    } catch (e) { return null; }
+  }
+
+  function restore() {
+    const h = location.hash || location.search;
+    const m = h.match(new RegExp('[#&?]' + KEY + '=([^&]+)'));
+    if (!m) return;
+    const s = dec(decodeURIComponent(m[1]));
+    if (s) apply(s);
+  }
+
+  // Record which Recompute button was last pressed so a Copy-Link URL captures
+  // it and the restore step can fire the same one.
+  function instrumentRecomputeBtns() {
+    const tag = (which) => () => { window.__lastRecompute = which; };
+    const b1 = document.getElementById('recompute-btn');
+    const b2 = document.getElementById('recompute-genes-btn');
+    if (b1) b1.addEventListener('click', tag('panel'));
+    if (b2) b2.addEventListener('click', tag('genes'));
+  }
+
+  // Intercept clicks on the cross-explorer View: nav links and inject the
+  // current UI state into the target URL hash so switching SVD ↔ UMAP ↔
+  // diffmap ↔ NMF keeps the subtype subset, gene filter, region toggle,
+  // metabolism slider, etc.
+  function instrumentVizNav() {
+    document.querySelectorAll('.viz-nav-btn').forEach(a => {
+      if (a.classList.contains('active')) return;     // self-link, no-op
+      a.addEventListener('click', (e) => {
+        const href = a.getAttribute('href');
+        if (!href || href.startsWith('http')) return; // leave absolute / external alone
+        e.preventDefault();
+        try {
+          const s = gather();
+          const b64 = enc(s);
+          // Strip any existing #s=... from the target so we don't double up.
+          const cleanHref = href.split('#')[0];
+          window.location.href = cleanHref + '#' + KEY + '=' + b64;
+        } catch (err) {
+          // Fall back to a plain navigation if anything goes wrong.
+          window.location.href = href;
+        }
+      });
+    });
+  }
+
+  function mkBtn() {
+    const btn = document.createElement('button');
+    btn.id = 'copy-link-btn';
+    btn.title = 'Copy a link that reproduces the current view';
+    btn.textContent = '🔗 Copy link';
+    btn.style.cssText =
+      'position:fixed;top:10px;right:max(10px,calc(50vw - 845px));font-size:12px;padding:5px 10px;' +
+      'background:#fff;border:1px solid #aaa;border-radius:4px;cursor:pointer;' +
+      'z-index:99999;box-shadow:0 1px 3px rgba(0,0,0,0.15);font-family:inherit;';
+    document.body.appendChild(btn);
+    btn.addEventListener('click', async () => {
+      const s = gather();
+      const b64 = enc(s);
+      const url = location.origin + location.pathname + '#' + KEY + '=' + b64;
+      try {
+        await navigator.clipboard.writeText(url);
+        const old = btn.textContent;
+        btn.textContent = '✓ Copied';
+        setTimeout(() => { btn.textContent = old; }, 1500);
+      } catch (e) {
+        window.prompt('Copy this URL:', url);
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      mkBtn();
+      // give explorer JS a beat to wire its own handlers
+      setTimeout(() => { instrumentRecomputeBtns(); instrumentVizNav(); restore(); }, 200);
+    });
+  } else {
+    mkBtn();
+    setTimeout(() => { instrumentRecomputeBtns(); instrumentVizNav(); restore(); }, 200);
+  }
+  // Safety-net: in any path where the overlay was shown, drop it after a max
+  // time so a stalled recompute doesn't trap the user behind a blank page.
+  if (_hasHash || _hasDefault) {
+    setTimeout(() => dropOverlay(), 3000);
+  }
+})();

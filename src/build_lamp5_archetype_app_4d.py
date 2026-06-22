@@ -251,11 +251,15 @@ GROUPS = {
 
 # --- Cross-explorer navigation. Buttons at the top of each explorer link to
 # the same group's UMAP / archetype-NMF / SVD-biplot / diffmap variants.
+# (kind, label, glyph, glyph-colour, filename template) — glyphs + colours match
+# the landing page so the Plotting Method bar reads like the home cards.
 VIZ_TYPES = [
-    ('archetype', 'Archetype',  '{slug}_archetype_explorer_4d.html'),
-    ('svd',       'SVD',        '{slug}_svd_recompute_explorer_3d.html'),
-    ('umap',      'UMAP',       '{slug}_umap_recompute_explorer_3d.html'),
-    ('diffmap',   'Diffmap',    '{slug}_diffmap_recompute_explorer_3d.html'),
+    ('archetype', 'Archetype',         '▲', '#2ca02c', '{slug}_archetype_explorer_4d.html'),
+    ('svd',       'SVD',               '◆', '#1f77b4', '{slug}_svd_recompute_explorer_3d.html'),
+    ('umap',      'UMAP',              '●', '#d62728', '{slug}_umap_recompute_explorer_3d.html'),
+    ('diffmap',   'Diffmap',           '◐', '#9467bd', '{slug}_diffmap_recompute_explorer_3d.html'),
+    ('marker',    'Marker finder',     '⊟', '#875e38', '{slug}_marker_explorer_3d.html'),
+    ('geneassoc', 'Gene associations', '⊞', '#4a7a6f', '{slug}_geneassoc_explorer_3d.html'),
 ]
 
 # --- Consistent cell-type colour scheme across all explorers + the landing
@@ -418,11 +422,18 @@ def viz_nav_html(slug, current_kind, group_overrides=None):
     if group_overrides is None:
         group_overrides = GROUP.get('viz_nav_overrides', {}) if GROUP else {}
     parts = ['<nav class="viz-nav"><span class="viz-nav-label">view:</span>']
-    for kind, label, fmt in VIZ_TYPES:
+    for kind, label, glyph, gcolor, fmt in VIZ_TYPES:
+        # marker + gene-association explorers are only built for the adult Tasic
+        # cohorts — skip those nav slots for the developmental cohorts so they
+        # don't link to files that don't exist.
+        if kind in ('marker', 'geneassoc') and GROUP_NAME.startswith('DevInhib'):
+            continue
         fmt_use = group_overrides.get(kind, fmt)
         href = fmt_use.format(slug=slug)
         active = ' active' if kind == current_kind else ''
-        parts.append(f'<a class="viz-nav-btn{active}" href="{href}">{label}</a>')
+        parts.append(
+            f'<a class="viz-nav-btn{active}" href="{href}">'
+            f'<span class="viz-nav-glyph" style="color:{gcolor}">{glyph}</span> {label}</a>')
     parts.append('</nav>')
     return ''.join(parts)
 
@@ -430,9 +441,11 @@ def viz_nav_html(slug, current_kind, group_overrides=None):
 # is interpolated as a literal string into the f-string-escaped style block).
 VIZ_NAV_CSS = """
 .viz-nav { flex: 0 0 auto; display: flex; gap: 6px; align-items: center;
-           margin: 2px 0 6px 0; }
+           flex-wrap: wrap; justify-content: center; margin: 2px 0 6px 0; }
 .viz-nav-label { font-size: 12px; color: #666; font-weight: 600;
                   margin-right: 4px; }
+.viz-nav-glyph { font-size: 13px; line-height: 1; }
+.viz-nav-btn.active .viz-nav-glyph { color: #fff !important; }
 .viz-nav-btn { padding: 4px 12px; font-size: 13px; color: #333;
                background: #f6f6f6; border: 1px solid #ccc; border-radius: 4px;
                text-decoration: none; cursor: pointer; }
@@ -645,7 +658,7 @@ function clearColorKey() { _ckEl().innerHTML = ''; }
 # explorer (mirror of the top-right Copy-link button). Explorers live in
 # data-vis/<cohort>/… so the landing page is one level up.
 HOME_LINK_CSS = """
-.home-link { position: fixed; top: 10px; left: 12px; z-index: 1000; font-size: 13px;
+.home-link { position: fixed; top: 10px; left: max(12px, calc(50vw - 845px)); z-index: 1000; font-size: 13px;
              text-decoration: none; color: #5a4326; background: rgba(255,255,255,.9);
              border: 1px solid #cdbf9f; border-radius: 7px; padding: 5px 11px;
              font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.08); }

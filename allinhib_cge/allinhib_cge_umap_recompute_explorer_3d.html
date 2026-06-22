@@ -228,9 +228,11 @@ html, body { height: auto !important; min-height: 100%; }
 
 
 .viz-nav { flex: 0 0 auto; display: flex; gap: 6px; align-items: center;
-           margin: 2px 0 6px 0; }
+           flex-wrap: wrap; justify-content: center; margin: 2px 0 6px 0; }
 .viz-nav-label { font-size: 12px; color: #666; font-weight: 600;
                   margin-right: 4px; }
+.viz-nav-glyph { font-size: 13px; line-height: 1; }
+.viz-nav-btn.active .viz-nav-glyph { color: #fff !important; }
 .viz-nav-btn { padding: 4px 12px; font-size: 13px; color: #333;
                background: #f6f6f6; border: 1px solid #ccc; border-radius: 4px;
                text-decoration: none; cursor: pointer; }
@@ -240,7 +242,8 @@ html, body { height: auto !important; min-height: 100%; }
 
 
 /* roomier control rows so buttons never touch */
-.controls-row { gap: 9px !important; row-gap: 8px !important; }
+.controls-row { display: flex; align-items: center; flex-wrap: wrap;
+                gap: 9px !important; row-gap: 8px !important; }
 .ctrl-box .controls-row { padding: 2px 0; }
 
 /* one shared look for every pill button */
@@ -297,7 +300,7 @@ footer.cite a { color: var(--earth-dark); }
                      display: inline-block; border: 1px solid rgba(0,0,0,.12); }
 
 
-.home-link { position: fixed; top: 10px; left: 12px; z-index: 1000; font-size: 13px;
+.home-link { position: fixed; top: 10px; left: max(12px, calc(50vw - 845px)); z-index: 1000; font-size: 13px;
              text-decoration: none; color: #5a4326; background: rgba(255,255,255,.9);
              border: 1px solid #cdbf9f; border-radius: 7px; padding: 5px 11px;
              font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
@@ -315,7 +318,7 @@ footer.cite a { color: var(--earth-dark); }
 
 <div class="ctrl-box">
   <div class="ctrl-box-title">Plotting Method</div>
-  <div class="controls-row"><nav class="viz-nav"><span class="viz-nav-label">view:</span><a class="viz-nav-btn" href="allinhib_cge_nmf_recompute_explorer_4d.html">Archetype</a><a class="viz-nav-btn" href="allinhib_cge_svd_recompute_explorer_3d.html">SVD</a><a class="viz-nav-btn active" href="allinhib_cge_umap_recompute_explorer_3d.html">UMAP</a><a class="viz-nav-btn" href="allinhib_cge_diffmap_recompute_explorer_3d.html">Diffmap</a></nav></div>
+  <div class="controls-row"><nav class="viz-nav"><span class="viz-nav-label">view:</span><a class="viz-nav-btn" href="allinhib_cge_nmf_recompute_explorer_4d.html"><span class="viz-nav-glyph" style="color:#2ca02c">▲</span> Archetype</a><a class="viz-nav-btn" href="allinhib_cge_svd_recompute_explorer_3d.html"><span class="viz-nav-glyph" style="color:#1f77b4">◆</span> SVD</a><a class="viz-nav-btn active" href="allinhib_cge_umap_recompute_explorer_3d.html"><span class="viz-nav-glyph" style="color:#d62728">●</span> UMAP</a><a class="viz-nav-btn" href="allinhib_cge_diffmap_recompute_explorer_3d.html"><span class="viz-nav-glyph" style="color:#9467bd">◐</span> Diffmap</a><a class="viz-nav-btn" href="allinhib_cge_marker_explorer_3d.html"><span class="viz-nav-glyph" style="color:#875e38">⊟</span> Marker finder</a><a class="viz-nav-btn" href="allinhib_cge_geneassoc_explorer_3d.html"><span class="viz-nav-glyph" style="color:#4a7a6f">⊞</span> Gene associations</a></nav></div>
 </div>
 
 <div class="ctrl-box">
@@ -1700,7 +1703,7 @@ if (AUTO_RECOMPUTE_DEFAULT && !location.hash.includes('s=')) {
 </script>
 
 <script>
-/* copy-link snippet v4 — patches a "Copy link" button into deployed explorers,
+/* copy-link snippet v5 — patches a "Copy link" button into deployed explorers,
  * AND makes the cross-explorer View: nav-bar carry the current UI state across.
  *
  * Click "Copy link" → serialises every UI control into a base64 JSON blob in
@@ -1755,11 +1758,17 @@ if (AUTO_RECOMPUTE_DEFAULT && !location.hash.includes('s=')) {
   if (_hasHash || _hasDefault) makeOverlay();
 
   function gather() {
-    const s = { v: 2, subs: {}, btns: {}, inputs: {}, toggles: {},
+    const s = { v: 2, btns: {}, inputs: {}, toggles: {},
                 recompute: window.__lastRecompute || 'panel' };
-    document.querySelectorAll('input[type=checkbox][data-sub]').forEach(cb => {
-      s.subs[cb.dataset.sub] = cb.checked ? 1 : 0;
-    });
+    // Subtype checkboxes packed as a bitmask (1 bit each, document order) — this
+    // is the dominant length cost; a 60-subtype dict (~800 chars) becomes ~12.
+    const cbs = Array.prototype.slice.call(
+      document.querySelectorAll('input[type=checkbox][data-sub]'));
+    if (cbs.length) {
+      const bytes = new Uint8Array(Math.ceil(cbs.length / 8));
+      cbs.forEach((cb, i) => { if (cb.checked) bytes[i >> 3] |= (1 << (i & 7)); });
+      s.sb = bytesToB64(bytes); s.sn = cbs.length;
+    }
     // single-active button groups — collect by parent container class.
     // The .age-toggle parent matches "toggle" but holds a MULTI-active
     // set of chips, so we skip it here and capture it explicitly below.
@@ -1802,7 +1811,12 @@ if (AUTO_RECOMPUTE_DEFAULT && !location.hash.includes('s=')) {
 
   function apply(s) {
     if (!s) return;
-    if (s.subs) {
+    if (s.sb != null) {
+      const bytes = b64ToBytes(s.sb);
+      const cbs = Array.prototype.slice.call(
+        document.querySelectorAll('input[type=checkbox][data-sub]'));
+      cbs.forEach((cb, i) => { cb.checked = !!(bytes[i >> 3] & (1 << (i & 7))); });
+    } else if (s.subs) {   // v4 and earlier: subtype dict
       document.querySelectorAll('input[type=checkbox][data-sub]').forEach(cb => {
         const k = cb.dataset.sub;
         if (k in s.subs) cb.checked = !!s.subs[k];
@@ -1886,6 +1900,19 @@ if (AUTO_RECOMPUTE_DEFAULT && !location.hash.includes('s=')) {
     dropOverlay();   // no recompute needed → reveal immediately
   }
 
+  function bytesToB64(bytes) {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function b64ToBytes(b64) {
+    b64 = b64.replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
   function enc(o) {
     const json = JSON.stringify(o);
     let b64 = btoa(unescape(encodeURIComponent(json)));
@@ -1949,7 +1976,7 @@ if (AUTO_RECOMPUTE_DEFAULT && !location.hash.includes('s=')) {
     btn.title = 'Copy a link that reproduces the current view';
     btn.textContent = '🔗 Copy link';
     btn.style.cssText =
-      'position:fixed;top:10px;right:10px;font-size:12px;padding:5px 10px;' +
+      'position:fixed;top:10px;right:max(10px,calc(50vw - 845px));font-size:12px;padding:5px 10px;' +
       'background:#fff;border:1px solid #aaa;border-radius:4px;cursor:pointer;' +
       'z-index:99999;box-shadow:0 1px 3px rgba(0,0,0,0.15);font-family:inherit;';
     document.body.appendChild(btn);

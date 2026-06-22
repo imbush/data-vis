@@ -412,7 +412,7 @@ def main():
                         background: #fff; border: 1px solid #b0c4d6; border-radius: 3px; }
   .area-results-chip:hover { background: #e7f0fa; }
   .area-results-chip.current { background: #1f77b4; color: white; border-color: #1f77b4; }
-  .home-link { position: fixed; top: 10px; left: 12px; z-index: 1000; font-size: 13px;
+  .home-link { position: fixed; top: 10px; left: max(12px, calc(50vw - 845px)); z-index: 1000; font-size: 13px;
                text-decoration: none; color: #5a4326; background: rgba(255,255,255,.9);
                border: 1px solid #cdbf9f; border-radius: 7px; padding: 5px 11px;
                font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
