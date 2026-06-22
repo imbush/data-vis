@@ -49,7 +49,8 @@ for g in allinhib allinhib_mge allinhib_cge allexc devinhib devinhib_mge devinhi
            "${g}_svd_recompute_explorer_3d.html" \
            "${g}_umap_recompute_explorer_3d.html" \
            "${g}_diffmap_recompute_explorer_3d.html" \
-           "${g}_marker_explorer_3d.html"; do
+           "${g}_marker_explorer_3d.html" \
+           "${g}_geneassoc_explorer_3d.html"; do
     copy_one_or_skip "$SRC/$f" "$DST/$g/$f" "$g" "$f"
   done
 done

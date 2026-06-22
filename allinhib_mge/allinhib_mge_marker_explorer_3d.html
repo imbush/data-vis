@@ -1,9 +1,42 @@
 <!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Inhibitory Neuron — MGE lineage Marker Gene Finder</title>
 <style>
-body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; color: #222; background: #fafafa; }
-h2 { text-align: center; margin: 14px 0 2px; }
-.hint { text-align: center; color: #555; font-size: 13px; max-width: 760px; margin: 2px auto 10px; }
+
+:root {
+  --bg: #f7f5f1;
+  --fg: #1a1a1a;
+  --muted: #555;
+  --line: #d9d2c5;
+  --card: #ffffff;
+  --accent: #1f77b4;
+  --v-archetype: #2ca02c;
+  --v-svd:       #1f77b4;
+  --v-umap:      #d62728;
+  --v-diffmap:   #9467bd;
+  /* earth-tone button system (matches the cream landing page) */
+  --earth:       #a9794f;   /* active / selected */
+  --earth-dark:  #875e38;   /* primary-action fill + active border */
+  --earth-soft:  #efe6d8;   /* hover tint */
+  --btn-bg:      #fbf8f3;
+  --btn-border:  #cfc6b5;
+  --btn-fg:      #4a4034;
+}
+html, body { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont,
+             "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+             color: var(--fg); background: var(--bg); }
+h2 { letter-spacing: -0.01em; color: var(--fg); }
+.hint b { color: var(--accent); }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+       background: #ece6d6; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+details.header { background: var(--card); border: 1px solid var(--line);
+                 border-radius: 6px; padding: 6px 10px; }
+details.header summary { color: var(--muted); }
+details.header[open] summary { color: var(--fg); font-weight: 600; }
+/* The Panel HVG z-expression panel (heatmap + line strip + cell-type strip)
+   was judged not useful — hide the whole block in every explorer. */
+.viz-stack { display: none !important; }
+
+html, body { margin: 0; padding: 0; }
 button { font-size: 13px; padding: 4px 10px; }
 
 body { align-items: center; }                 /* center the whole column */
@@ -139,10 +172,10 @@ footer.cite a { color: var(--earth-dark); }
 .mk-bulk { font-size: 11px; padding: 1px 6px; margin-left: 4px; }
 .mk-subclass-subs { display: flex; flex-wrap: wrap; gap: 4px; }
 .mk-subt { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px;
-            border: 1px solid #ddd; border-radius: 12px; font-size: 12px; background: #fff; }
-.mk-subt .ct { color: #999; }
+            border: 1px solid var(--line); border-radius: 12px; font-size: 12px; background: var(--card); }
+.mk-subt .ct { color: var(--muted); }
 .mk-ab { font-size: 10px; font-weight: 700; padding: 0 5px; border-radius: 8px;
-          border: 1px solid #ccc; background: #f3f3f3; color: #888; cursor: pointer; }
+          border: 1px solid var(--btn-border); background: var(--btn-bg); color: var(--btn-fg); cursor: pointer; }
 .mk-ab.mk-a.on { background: #2c6fbb; color: #fff; border-color: #2c6fbb; }
 .mk-ab.mk-b.on { background: #cc4125; color: #fff; border-color: #cc4125; }
 /* marker results: gene list + dot plot */
@@ -205,6 +238,10 @@ footer.cite a { color: var(--earth-dark); }
     <span id="grp-a-summary" class="label" style="color:#2c6fbb;font-weight:700;"></span>
     <span id="grp-b-summary" class="label" style="color:#cc4125;font-weight:700;"></span>
     <button id="grp-clear">clear both</button>
+  </div>
+  <div class="controls-row" style="gap:10px;">
+    <button id="replot-panel" title="Re-fit the SVD embedding using only the two selected groups (panel HVG genes), so the axes capture what separates A from B.">Replot on these groups (gene panel)</button>
+    <button id="replot-all" title="Re-fit the SVD embedding on the two groups using every gene currently shown in the gene filter.">Replot (shown genes)</button>
   </div>
   <div class="controls-row" style="display:block;"><div class="mk-subclass"><div class="mk-subclass-head"><b>Pvalb</b> <span class="ct">(1210 cells, 10 subtypes)</span> <button class="mk-bulk" data-grp="A" data-subclass="Pvalb">all→A</button><button class="mk-bulk" data-grp="B" data-subclass="Pvalb">all→B</button><button class="mk-bulk" data-grp="none" data-subclass="Pvalb">clear</button></div><div class="mk-subclass-subs"><div class="mk-subt" data-sub="Pvalb Akr1c18 Ntf3"><button class="mk-ab mk-a" data-sub="Pvalb Akr1c18 Ntf3" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Pvalb Akr1c18 Ntf3" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#11717e">●</span> Pvalb Akr1c18 Ntf3 <span class="ct">(45)</span></div><div class="mk-subt" data-sub="Pvalb Calb1 Sst"><button class="mk-ab mk-a" data-sub="Pvalb Calb1 Sst" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Pvalb Calb1 Sst" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#a5a1ed">●</span> Pvalb Calb1 Sst <span class="ct">(64)</span></div><div class="mk-subt" data-sub="Pvalb Gabrg1"><button class="mk-ab mk-a" data-sub="Pvalb Gabrg1" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Pvalb Gabrg1" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#1b7690">●</span> Pvalb Gabrg1 <span class="ct">(76)</span></div><div class="mk-subt" data-sub="Pvalb Gpr149 Islr"><button class="mk-ab mk-a" data-sub="Pvalb Gpr149 Islr" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Pvalb Gpr149 Islr" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#8389ee">●</span> Pvalb Gpr149 Islr <span class="ct">(129)</span></div><div class="mk-subt" data-sub="Pvalb Reln Itm2a"><button class="mk-ab mk-a" data-sub="Pvalb Reln Itm2a" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Pvalb Reln Itm2a" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#187eb0">●</span> Pvalb Reln Itm2a <span class="ct">(52)</span></div><div class="mk-subt" data-sub="Pvalb Reln Tac1"><button class="mk-ab mk-a" data-sub="Pvalb Reln Tac1" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Pvalb Reln Tac1" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#7183e4">●</span> Pvalb Reln Tac1 <span class="ct">(328)</span></div><div class="mk-subt" data-sub="Pvalb Sema3e Kank4"><button class="mk-ab mk-a" data-sub="Pvalb Sema3e Kank4" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Pvalb Sema3e Kank4" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#247dbf">●</span> Pvalb Sema3e Kank4 <span class="ct">(35)</span></div><div class="mk-subt" data-sub="Pvalb Th Sst"><button class="mk-ab mk-a" data-sub="Pvalb Th Sst" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Pvalb Th Sst" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#5179e7">●</span> Pvalb Th Sst <span class="ct">(50)</span></div><div class="mk-subt" data-sub="Pvalb Tpbg"><button class="mk-ab mk-a" data-sub="Pvalb Tpbg" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Pvalb Tpbg" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#207ae1">●</span> Pvalb Tpbg <span class="ct">(385)</span></div><div class="mk-subt" data-sub="Pvalb Vipr2"><button class="mk-ab mk-a" data-sub="Pvalb Vipr2" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Pvalb Vipr2" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#427adb">●</span> Pvalb Vipr2 <span class="ct">(46)</span></div></div></div><div class="mk-subclass"><div class="mk-subclass-head"><b>Sst</b> <span class="ct">(1567 cells, 21 subtypes)</span> <button class="mk-bulk" data-grp="A" data-subclass="Sst">all→A</button><button class="mk-bulk" data-grp="B" data-subclass="Sst">all→B</button><button class="mk-bulk" data-grp="none" data-subclass="Sst">clear</button></div><div class="mk-subclass-subs"><div class="mk-subt" data-sub="Sst Calb2 Necab1"><button class="mk-ab mk-a" data-sub="Sst Calb2 Necab1" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Calb2 Necab1" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#177e11">●</span> Sst Calb2 Necab1 <span class="ct">(27)</span></div><div class="mk-subt" data-sub="Sst Calb2 Pdlim5"><button class="mk-ab mk-a" data-sub="Sst Calb2 Pdlim5" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Calb2 Pdlim5" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#a1ede4">●</span> Sst Calb2 Pdlim5 <span class="ct">(116)</span></div><div class="mk-subt" data-sub="Sst Chodl"><button class="mk-ab mk-a" data-sub="Sst Chodl" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Chodl" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#2ce2be">●</span> Sst Chodl <span class="ct">(56)</span></div><div class="mk-subt" data-sub="Sst Chrna2 Glra3"><button class="mk-ab mk-a" data-sub="Sst Chrna2 Glra3" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Chrna2 Glra3" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#198319">●</span> Sst Chrna2 Glra3 <span class="ct">(218)</span></div><div class="mk-subt" data-sub="Sst Chrna2 Ptgdr"><button class="mk-ab mk-a" data-sub="Sst Chrna2 Ptgdr" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Chrna2 Ptgdr" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#90f0e0">●</span> Sst Chrna2 Ptgdr <span class="ct">(129)</span></div><div class="mk-subt" data-sub="Sst Crh 4930553C11Rik"><button class="mk-ab mk-a" data-sub="Sst Crh 4930553C11Rik" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Crh 4930553C11Rik" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#14951b">●</span> Sst Crh 4930553C11Rik <span class="ct">(54)</span></div><div class="mk-subt" data-sub="Sst Crhr2 Efemp1"><button class="mk-ab mk-a" data-sub="Sst Crhr2 Efemp1" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Crhr2 Efemp1" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#8ae9d4">●</span> Sst Crhr2 Efemp1 <span class="ct">(76)</span></div><div class="mk-subt" data-sub="Sst Esm1"><button class="mk-ab mk-a" data-sub="Sst Esm1" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Esm1" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#1d9a29">●</span> Sst Esm1 <span class="ct">(61)</span></div><div class="mk-subt" data-sub="Sst Hpse Cbln4"><button class="mk-ab mk-a" data-sub="Sst Hpse Cbln4" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Hpse Cbln4" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#79edce">●</span> Sst Hpse Cbln4 <span class="ct">(35)</span></div><div class="mk-subt" data-sub="Sst Hpse Sema3c"><button class="mk-ab mk-a" data-sub="Sst Hpse Sema3c" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Hpse Sema3c" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#18ad2d">●</span> Sst Hpse Sema3c <span class="ct">(170)</span></div><div class="mk-subt" data-sub="Sst Mme Fam114a1"><button class="mk-ab mk-a" data-sub="Sst Mme Fam114a1" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Mme Fam114a1" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#74e4c1">●</span> Sst Mme Fam114a1 <span class="ct">(34)</span></div><div class="mk-subt" data-sub="Sst Myh8 Etv1"><button class="mk-ab mk-a" data-sub="Sst Myh8 Etv1" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Myh8 Etv1" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#22b03e">●</span> Sst Myh8 Etv1 <span class="ct">(70)</span></div><div class="mk-subt" data-sub="Sst Myh8 Fibin"><button class="mk-ab mk-a" data-sub="Sst Myh8 Fibin" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Myh8 Fibin" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#61e9b8">●</span> Sst Myh8 Fibin <span class="ct">(81)</span></div><div class="mk-subt" data-sub="Sst Nr2f2 Necab1"><button class="mk-ab mk-a" data-sub="Sst Nr2f2 Necab1" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Nr2f2 Necab1" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#1bc544">●</span> Sst Nr2f2 Necab1 <span class="ct">(40)</span></div><div class="mk-subt" data-sub="Sst Nts"><button class="mk-ab mk-a" data-sub="Sst Nts" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Nts" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#5de0aa">●</span> Sst Nts <span class="ct">(29)</span></div><div class="mk-subt" data-sub="Sst Rxfp1 Eya1"><button class="mk-ab mk-a" data-sub="Sst Rxfp1 Eya1" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Rxfp1 Eya1" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#26c755">●</span> Sst Rxfp1 Eya1 <span class="ct">(46)</span></div><div class="mk-subt" data-sub="Sst Rxfp1 Prdm8"><button class="mk-ab mk-a" data-sub="Sst Rxfp1 Prdm8" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Rxfp1 Prdm8" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#4ae69e">●</span> Sst Rxfp1 Prdm8 <span class="ct">(119)</span></div><div class="mk-subt" data-sub="Sst Tac1 Htr1d"><button class="mk-ab mk-a" data-sub="Sst Tac1 Htr1d" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Tac1 Htr1d" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#1edc5f">●</span> Sst Tac1 Htr1d <span class="ct">(90)</span></div><div class="mk-subt" data-sub="Sst Tac1 Tacr3"><button class="mk-ab mk-a" data-sub="Sst Tac1 Tacr3" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Tac1 Tacr3" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#47dc90">●</span> Sst Tac1 Tacr3 <span class="ct">(48)</span></div><div class="mk-subt" data-sub="Sst Tac2 Myh4"><button class="mk-ab mk-a" data-sub="Sst Tac2 Myh4" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Tac2 Myh4" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#30d872">●</span> Sst Tac2 Myh4 <span class="ct">(21)</span></div><div class="mk-subt" data-sub="Sst Tac2 Tacstd2"><button class="mk-ab mk-a" data-sub="Sst Tac2 Tacstd2" data-grp="A" title="Add to Group A">A</button><button class="mk-ab mk-b" data-sub="Sst Tac2 Tacstd2" data-grp="B" title="Add to Group B">B</button><span class="dot" style="color:#32e380">●</span> Sst Tac2 Tacstd2 <span class="ct">(47)</span></div></div></div></div>
 </div>
@@ -580,6 +617,8 @@ function groupStats(j, idx) {
 function clearMarkers() { curMarkers = []; document.getElementById('marker-results').innerHTML = ''; document.getElementById('find-status').textContent = ''; }
 
 document.getElementById('find-btn').addEventListener('click', findMarkers);
+document.getElementById('replot-panel').addEventListener('click', () => replot(false));
+document.getElementById('replot-all').addEventListener('click', () => replot(true));
 function findMarkers() {
   const aIdx = [], bIdx = [];
   for (let i = 0; i < N_CELLS; i++) { const g = cellGroup(i); if (g === 'A') aIdx.push(i); else if (g === 'B') bIdx.push(i); }
@@ -641,6 +680,109 @@ function renderMarkerList(top) {
     r.addEventListener('mouseenter', () => colorByGene(parseInt(r.dataset.gene, 10)));
     r.addEventListener('click', () => colorByGene(parseInt(r.dataset.gene, 10)));
   });
+}
+
+// ---- replot: refit the SVD on just the two groups --------------------------
+function powerIterTopK(A, K, maxIter, tol) {
+  maxIter = maxIter || 80; tol = tol || 1e-7;
+  const m = A.length, n = A[0].length;
+  const W = new Array(m);
+  for (let i = 0; i < m; i++) W[i] = Float64Array.from(A[i]);
+  const U = [], V = []; const S = new Float64Array(K);
+  for (let k = 0; k < K; k++) {
+    let v = new Float64Array(n);
+    for (let j = 0; j < n; j++) v[j] = Math.sin((j + 1) * (k + 1) * 0.13) + 0.1;
+    let vn = 0; for (let j = 0; j < n; j++) vn += v[j]*v[j]; vn = Math.sqrt(vn);
+    for (let j = 0; j < n; j++) v[j] /= vn;
+    let s_prev = 0, s = 0; let u = new Float64Array(m);
+    for (let iter = 0; iter < maxIter; iter++) {
+      for (let i = 0; i < m; i++) { let acc = 0; const Wi = W[i]; for (let j = 0; j < n; j++) acc += Wi[j]*v[j]; u[i] = acc; }
+      let un = 0; for (let i = 0; i < m; i++) un += u[i]*u[i]; un = Math.sqrt(un);
+      if (un < 1e-14) break;
+      for (let i = 0; i < m; i++) u[i] /= un;
+      let v_new = new Float64Array(n);
+      for (let i = 0; i < m; i++) { const ui = u[i], Wi = W[i]; for (let j = 0; j < n; j++) v_new[j] += ui*Wi[j]; }
+      let sn = 0; for (let j = 0; j < n; j++) sn += v_new[j]*v_new[j]; sn = Math.sqrt(sn);
+      if (sn < 1e-14) { s = 0; break; }
+      for (let j = 0; j < n; j++) v_new[j] /= sn;
+      s = sn; v = v_new;
+      if (iter > 1 && Math.abs(s - s_prev) < tol * s) break;
+      s_prev = s;
+    }
+    S[k] = s; U.push(Float64Array.from(u)); V.push(Float64Array.from(v));
+    for (let i = 0; i < m; i++) { const sui = s*u[i]; const Wi = W[i]; for (let j = 0; j < n; j++) Wi[j] -= sui*v[j]; }
+  }
+  return { U, S, V };
+}
+function _robustMax(absVals) {
+  const v = absVals.slice().sort((a, b) => a - b);
+  return v[Math.floor(0.995 * (v.length - 1))] || 1;
+}
+function replot(useAllGenes) {
+  const sel = []; for (let i = 0; i < N_CELLS; i++) if (cellActiveAt(i)) sel.push(i);
+  const fs = document.getElementById('find-status');
+  if (sel.length < 4) { if (fs) fs.textContent = 'Assign cells to both groups first.'; return; }
+  const basisIdx = [];
+  for (let j = 0; j < N_GENES; j++) if (geneActive[j] && (useAllGenes || gene_in_panel[j])) basisIdx.push(j);
+  if (basisIdx.length < 3) { if (fs) fs.textContent = 'Too few genes in the basis — relax the gene filter.'; return; }
+  const m = sel.length, n = basisIdx.length;
+  // z-score basis genes over the selected cells, build Zp (m × n)
+  const bmean = new Float64Array(n), bstd = new Float64Array(n);
+  for (let g = 0; g < n; g++) {
+    const j = basisIdx[g]; let s = 0;
+    for (let a = 0; a < m; a++) s += expr_matrix[sel[a]*N_GENES + j] / EXPR_SCALE;
+    const mu = s / m; let vv = 0;
+    for (let a = 0; a < m; a++) { const x = expr_matrix[sel[a]*N_GENES + j]/EXPR_SCALE - mu; vv += x*x; }
+    bmean[g] = mu; bstd[g] = Math.sqrt(vv / Math.max(1, m-1)) || 1;
+  }
+  const Zp = new Array(m);
+  for (let a = 0; a < m; a++) {
+    const row = new Float64Array(n), i = sel[a];
+    for (let g = 0; g < n; g++) row[g] = (expr_matrix[i*N_GENES + basisIdx[g]]/EXPR_SCALE - bmean[g]) / bstd[g];
+    Zp[a] = row;
+  }
+  const { U, S } = powerIterTopK(Zp, 3);
+  // cell scores → robust-normalised cube coords
+  const cmax = [1,1,1];
+  for (let k = 0; k < 3; k++) cmax[k] = _robustMax(Array.from(U[k], (u,a) => Math.abs(u*S[k])));
+  for (let a = 0; a < m; a++) {
+    const i = sel[a];
+    cell_x[i] = Math.max(-1, Math.min(1, U[0][a]*S[0]/cmax[0]));
+    cell_y[i] = Math.max(-1, Math.min(1, U[1][a]*S[1]/cmax[1]));
+    cell_z[i] = Math.max(-1, Math.min(1, U[2][a]*S[2]/cmax[2]));
+  }
+  // gene loadings on the new basis (all genes), z-scored over the selected cells
+  const gmean = new Float64Array(N_GENES), gstd = new Float64Array(N_GENES);
+  for (let j = 0; j < N_GENES; j++) {
+    let s = 0; for (let a = 0; a < m; a++) s += expr_matrix[sel[a]*N_GENES + j]/EXPR_SCALE;
+    const mu = s / m; let vv = 0;
+    for (let a = 0; a < m; a++) { const x = expr_matrix[sel[a]*N_GENES + j]/EXPR_SCALE - mu; vv += x*x; }
+    gmean[j] = mu; gstd[j] = Math.sqrt(vv / Math.max(1, m-1)) || 1;
+  }
+  const gl = [new Float64Array(N_GENES), new Float64Array(N_GENES), new Float64Array(N_GENES)];
+  for (let a = 0; a < m; a++) {
+    const i = sel[a], u0 = U[0][a], u1 = U[1][a], u2 = U[2][a], base = i*N_GENES;
+    for (let j = 0; j < N_GENES; j++) {
+      const z = (expr_matrix[base + j]/EXPR_SCALE - gmean[j]) / gstd[j];
+      gl[0][j] += z*u0; gl[1][j] += z*u1; gl[2][j] += z*u2;
+    }
+  }
+  for (let k = 0; k < 3; k++) { const inv = S[k] > 1e-9 ? 1/S[k] : 0; for (let j = 0; j < N_GENES; j++) gl[k][j] *= inv; }
+  const gmaxA = [_robustMax(Array.from(gl[0], Math.abs)), _robustMax(Array.from(gl[1], Math.abs)), _robustMax(Array.from(gl[2], Math.abs))];
+  for (let j = 0; j < N_GENES; j++) {
+    gene_x[j] = Math.max(-1, Math.min(1, gl[0][j]/gmaxA[0]));
+    gene_y[j] = Math.max(-1, Math.min(1, gl[1][j]/gmaxA[1]));
+    gene_z[j] = Math.max(-1, Math.min(1, gl[2][j]/gmaxA[2]));
+    gene_xyz[j] = [gene_x[j], gene_y[j], gene_z[j]];
+  }
+  // push new coords to both plots, then recolour + refilter
+  const cx = new Array(N_CELLS), cy = new Array(N_CELLS), cz = new Array(N_CELLS);
+  for (let i = 0; i < N_CELLS; i++) { if (cellActiveAt(i)) { cx[i]=cell_x[i]; cy[i]=cell_y[i]; cz[i]=cell_z[i]; } else { cx[i]=null; cy[i]=null; cz[i]=null; } }
+  Plotly.restyle(cellPlot, {x:[cx], y:[cy], z:[cz]}, [POINTS_TRACE]);
+  renderCells();
+  applyGeneFilter();
+  ringGene(-1);
+  if (fs) fs.textContent = 'Re-fit SVD on ' + m + ' cells × ' + n + (useAllGenes ? ' shown' : ' panel') + ' genes.';
 }
 
 // ---- boot ------------------------------------------------------------------

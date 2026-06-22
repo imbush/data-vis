@@ -776,9 +776,11 @@ function renderPlot() {
   const legend = document.getElementById('legend');
   legend.innerHTML = '';
   if (useExpr) {
-    legend.innerHTML = `<span class="legend-item"><span class="legend-dot" style="background:${magmaColor(0)}"></span>0</span>
-      <span class="legend-item"><span class="legend-dot" style="background:${magmaColor(0.5)}"></span>${(exprMax/2).toFixed(2)}</span>
-      <span class="legend-item"><span class="legend-dot" style="background:${magmaColor(1)}"></span>${exprMax.toFixed(2)} ${currentGene} (CPM-like)</span>`;
+    const grad = 'linear-gradient(to right,#000004,#3b0f70,#8c2981,#de4968,#fe9f6d,#fcfdbf)';
+    legend.innerHTML = `<span class="legend-item" style="gap:8px;font-weight:600;">${currentGene} (CPM-like)</span>`
+      + `<span class="legend-item" style="gap:6px;"><span style="color:#666">0</span>`
+      + `<span style="display:inline-block;width:220px;height:12px;border-radius:3px;border:1px solid #c4c4c4;background:${grad}"></span>`
+      + `<span style="color:#666">${exprMax.toFixed(2)}</span></span>`;
   } else {
     // Build from groups (taxonomy "classes") actually present in selection
     const tax = activeTax();

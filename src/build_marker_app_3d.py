@@ -302,9 +302,8 @@ def main():
     page = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>{base.cohort_title(GROUP_NAME).replace(' Atlas', '')} Marker Gene Finder</title>
 <style>
-body {{ font-family: -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; color: #222; background: #fafafa; }}
-h2 {{ text-align: center; margin: 14px 0 2px; }}
-.hint {{ text-align: center; color: #555; font-size: 13px; max-width: 760px; margin: 2px auto 10px; }}
+{base.UNIFIED_DESIGN_CSS}
+html, body {{ margin: 0; padding: 0; }}
 button {{ font-size: 13px; padding: 4px 10px; }}
 {base.LAYOUT_CSS}
 {base.VIZ_NAV_CSS}
@@ -325,10 +324,10 @@ button {{ font-size: 13px; padding: 4px 10px; }}
 .mk-bulk {{ font-size: 11px; padding: 1px 6px; margin-left: 4px; }}
 .mk-subclass-subs {{ display: flex; flex-wrap: wrap; gap: 4px; }}
 .mk-subt {{ display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px;
-            border: 1px solid #ddd; border-radius: 12px; font-size: 12px; background: #fff; }}
-.mk-subt .ct {{ color: #999; }}
+            border: 1px solid var(--line); border-radius: 12px; font-size: 12px; background: var(--card); }}
+.mk-subt .ct {{ color: var(--muted); }}
 .mk-ab {{ font-size: 10px; font-weight: 700; padding: 0 5px; border-radius: 8px;
-          border: 1px solid #ccc; background: #f3f3f3; color: #888; cursor: pointer; }}
+          border: 1px solid var(--btn-border); background: var(--btn-bg); color: var(--btn-fg); cursor: pointer; }}
 .mk-ab.mk-a.on {{ background: {GRP_A_COLOR}; color: #fff; border-color: {GRP_A_COLOR}; }}
 .mk-ab.mk-b.on {{ background: {GRP_B_COLOR}; color: #fff; border-color: {GRP_B_COLOR}; }}
 /* marker results: gene list + dot plot */
@@ -390,6 +389,10 @@ button {{ font-size: 13px; padding: 4px 10px; }}
     <span id="grp-a-summary" class="label" style="color:{GRP_A_COLOR};font-weight:700;"></span>
     <span id="grp-b-summary" class="label" style="color:{GRP_B_COLOR};font-weight:700;"></span>
     <button id="grp-clear">clear both</button>
+  </div>
+  <div class="controls-row" style="gap:10px;">
+    <button id="replot-panel" title="Re-fit the SVD embedding using only the two selected groups (panel HVG genes), so the axes capture what separates A from B.">Replot on these groups (gene panel)</button>
+    <button id="replot-all" title="Re-fit the SVD embedding on the two groups using every gene currently shown in the gene filter.">Replot (shown genes)</button>
   </div>
   <div class="controls-row" style="display:block;">{group_selector_html}</div>
 </div>
@@ -708,6 +711,8 @@ function groupStats(j, idx) {
 function clearMarkers() { curMarkers = []; document.getElementById('marker-results').innerHTML = ''; document.getElementById('find-status').textContent = ''; }
 
 document.getElementById('find-btn').addEventListener('click', findMarkers);
+document.getElementById('replot-panel').addEventListener('click', () => replot(false));
+document.getElementById('replot-all').addEventListener('click', () => replot(true));
 function findMarkers() {
   const aIdx = [], bIdx = [];
   for (let i = 0; i < N_CELLS; i++) { const g = cellGroup(i); if (g === 'A') aIdx.push(i); else if (g === 'B') bIdx.push(i); }
@@ -769,6 +774,109 @@ function renderMarkerList(top) {
     r.addEventListener('mouseenter', () => colorByGene(parseInt(r.dataset.gene, 10)));
     r.addEventListener('click', () => colorByGene(parseInt(r.dataset.gene, 10)));
   });
+}
+
+// ---- replot: refit the SVD on just the two groups --------------------------
+function powerIterTopK(A, K, maxIter, tol) {
+  maxIter = maxIter || 80; tol = tol || 1e-7;
+  const m = A.length, n = A[0].length;
+  const W = new Array(m);
+  for (let i = 0; i < m; i++) W[i] = Float64Array.from(A[i]);
+  const U = [], V = []; const S = new Float64Array(K);
+  for (let k = 0; k < K; k++) {
+    let v = new Float64Array(n);
+    for (let j = 0; j < n; j++) v[j] = Math.sin((j + 1) * (k + 1) * 0.13) + 0.1;
+    let vn = 0; for (let j = 0; j < n; j++) vn += v[j]*v[j]; vn = Math.sqrt(vn);
+    for (let j = 0; j < n; j++) v[j] /= vn;
+    let s_prev = 0, s = 0; let u = new Float64Array(m);
+    for (let iter = 0; iter < maxIter; iter++) {
+      for (let i = 0; i < m; i++) { let acc = 0; const Wi = W[i]; for (let j = 0; j < n; j++) acc += Wi[j]*v[j]; u[i] = acc; }
+      let un = 0; for (let i = 0; i < m; i++) un += u[i]*u[i]; un = Math.sqrt(un);
+      if (un < 1e-14) break;
+      for (let i = 0; i < m; i++) u[i] /= un;
+      let v_new = new Float64Array(n);
+      for (let i = 0; i < m; i++) { const ui = u[i], Wi = W[i]; for (let j = 0; j < n; j++) v_new[j] += ui*Wi[j]; }
+      let sn = 0; for (let j = 0; j < n; j++) sn += v_new[j]*v_new[j]; sn = Math.sqrt(sn);
+      if (sn < 1e-14) { s = 0; break; }
+      for (let j = 0; j < n; j++) v_new[j] /= sn;
+      s = sn; v = v_new;
+      if (iter > 1 && Math.abs(s - s_prev) < tol * s) break;
+      s_prev = s;
+    }
+    S[k] = s; U.push(Float64Array.from(u)); V.push(Float64Array.from(v));
+    for (let i = 0; i < m; i++) { const sui = s*u[i]; const Wi = W[i]; for (let j = 0; j < n; j++) Wi[j] -= sui*v[j]; }
+  }
+  return { U, S, V };
+}
+function _robustMax(absVals) {
+  const v = absVals.slice().sort((a, b) => a - b);
+  return v[Math.floor(0.995 * (v.length - 1))] || 1;
+}
+function replot(useAllGenes) {
+  const sel = []; for (let i = 0; i < N_CELLS; i++) if (cellActiveAt(i)) sel.push(i);
+  const fs = document.getElementById('find-status');
+  if (sel.length < 4) { if (fs) fs.textContent = 'Assign cells to both groups first.'; return; }
+  const basisIdx = [];
+  for (let j = 0; j < N_GENES; j++) if (geneActive[j] && (useAllGenes || gene_in_panel[j])) basisIdx.push(j);
+  if (basisIdx.length < 3) { if (fs) fs.textContent = 'Too few genes in the basis — relax the gene filter.'; return; }
+  const m = sel.length, n = basisIdx.length;
+  // z-score basis genes over the selected cells, build Zp (m × n)
+  const bmean = new Float64Array(n), bstd = new Float64Array(n);
+  for (let g = 0; g < n; g++) {
+    const j = basisIdx[g]; let s = 0;
+    for (let a = 0; a < m; a++) s += expr_matrix[sel[a]*N_GENES + j] / EXPR_SCALE;
+    const mu = s / m; let vv = 0;
+    for (let a = 0; a < m; a++) { const x = expr_matrix[sel[a]*N_GENES + j]/EXPR_SCALE - mu; vv += x*x; }
+    bmean[g] = mu; bstd[g] = Math.sqrt(vv / Math.max(1, m-1)) || 1;
+  }
+  const Zp = new Array(m);
+  for (let a = 0; a < m; a++) {
+    const row = new Float64Array(n), i = sel[a];
+    for (let g = 0; g < n; g++) row[g] = (expr_matrix[i*N_GENES + basisIdx[g]]/EXPR_SCALE - bmean[g]) / bstd[g];
+    Zp[a] = row;
+  }
+  const { U, S } = powerIterTopK(Zp, 3);
+  // cell scores → robust-normalised cube coords
+  const cmax = [1,1,1];
+  for (let k = 0; k < 3; k++) cmax[k] = _robustMax(Array.from(U[k], (u,a) => Math.abs(u*S[k])));
+  for (let a = 0; a < m; a++) {
+    const i = sel[a];
+    cell_x[i] = Math.max(-1, Math.min(1, U[0][a]*S[0]/cmax[0]));
+    cell_y[i] = Math.max(-1, Math.min(1, U[1][a]*S[1]/cmax[1]));
+    cell_z[i] = Math.max(-1, Math.min(1, U[2][a]*S[2]/cmax[2]));
+  }
+  // gene loadings on the new basis (all genes), z-scored over the selected cells
+  const gmean = new Float64Array(N_GENES), gstd = new Float64Array(N_GENES);
+  for (let j = 0; j < N_GENES; j++) {
+    let s = 0; for (let a = 0; a < m; a++) s += expr_matrix[sel[a]*N_GENES + j]/EXPR_SCALE;
+    const mu = s / m; let vv = 0;
+    for (let a = 0; a < m; a++) { const x = expr_matrix[sel[a]*N_GENES + j]/EXPR_SCALE - mu; vv += x*x; }
+    gmean[j] = mu; gstd[j] = Math.sqrt(vv / Math.max(1, m-1)) || 1;
+  }
+  const gl = [new Float64Array(N_GENES), new Float64Array(N_GENES), new Float64Array(N_GENES)];
+  for (let a = 0; a < m; a++) {
+    const i = sel[a], u0 = U[0][a], u1 = U[1][a], u2 = U[2][a], base = i*N_GENES;
+    for (let j = 0; j < N_GENES; j++) {
+      const z = (expr_matrix[base + j]/EXPR_SCALE - gmean[j]) / gstd[j];
+      gl[0][j] += z*u0; gl[1][j] += z*u1; gl[2][j] += z*u2;
+    }
+  }
+  for (let k = 0; k < 3; k++) { const inv = S[k] > 1e-9 ? 1/S[k] : 0; for (let j = 0; j < N_GENES; j++) gl[k][j] *= inv; }
+  const gmaxA = [_robustMax(Array.from(gl[0], Math.abs)), _robustMax(Array.from(gl[1], Math.abs)), _robustMax(Array.from(gl[2], Math.abs))];
+  for (let j = 0; j < N_GENES; j++) {
+    gene_x[j] = Math.max(-1, Math.min(1, gl[0][j]/gmaxA[0]));
+    gene_y[j] = Math.max(-1, Math.min(1, gl[1][j]/gmaxA[1]));
+    gene_z[j] = Math.max(-1, Math.min(1, gl[2][j]/gmaxA[2]));
+    gene_xyz[j] = [gene_x[j], gene_y[j], gene_z[j]];
+  }
+  // push new coords to both plots, then recolour + refilter
+  const cx = new Array(N_CELLS), cy = new Array(N_CELLS), cz = new Array(N_CELLS);
+  for (let i = 0; i < N_CELLS; i++) { if (cellActiveAt(i)) { cx[i]=cell_x[i]; cy[i]=cell_y[i]; cz[i]=cell_z[i]; } else { cx[i]=null; cy[i]=null; cz[i]=null; } }
+  Plotly.restyle(cellPlot, {x:[cx], y:[cy], z:[cz]}, [POINTS_TRACE]);
+  renderCells();
+  applyGeneFilter();
+  ringGene(-1);
+  if (fs) fs.textContent = 'Re-fit SVD on ' + m + ' cells × ' + n + (useAllGenes ? ' shown' : ' panel') + ' genes.';
 }
 
 // ---- boot ------------------------------------------------------------------
