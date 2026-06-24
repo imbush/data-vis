@@ -94,6 +94,8 @@ async function loadManifest(){
   const donors = [...new Set(m.sections.map(s=>s.donor))];
   const dsel = document.getElementById('donor');
   dsel.innerHTML = donors.map(d=>'<option>'+d+'</option>').join('');
+  const wantD=(new URLSearchParams(location.search)).get('donor');
+  if(wantD && donors.includes(wantD)) dsel.value=wantD;
   dsel.onchange = fillSections;
   document.getElementById('genelist').innerHTML = m.genes.map(g=>'<option value="'+g+'">').join('');
   // class legend
@@ -109,8 +111,18 @@ function fillSections(){
   sel.innerHTML = secs.map((s,i)=>'<option value="'+s.id+'">'+fmtSec(s)+'</option>').join('');
   document.getElementById('seccount').textContent = secs.length+' sections';
   sel.onchange = ()=>selectSection(sel.value);
-  selectSection(secs[Math.floor(secs.length/2)].id);   // start mid-brain
-  sel.value = document.getElementById('section').value;
+  const want = (new URLSearchParams(location.search)).get('section');
+  const startId = (want && secs.some(s=>s.id===want)) ? want
+                  : secs[Math.floor(secs.length/2)].id;   // start mid-brain
+  selectSection(startId);
+  sel.value = startId;
+}
+
+// Deep-link support: ?donor=&section=&gene= applied once after first load.
+function applyUrlGene(){
+  const g=(new URLSearchParams(location.search)).get('gene');
+  if(g){ const inp=document.getElementById('gene'); inp.value=g;
+         inp.dispatchEvent(new Event('change')); }
 }
 
 function sectionById(id){ return MANIFEST.sections.find(s=>s.id===id); }
@@ -125,12 +137,13 @@ async function parseSection(s){
   const x=new Float32Array(buf,o,N); o+=4*N;
   const y=new Float32Array(buf,o,N); o+=4*N;
   const cls=new Uint8Array(buf,o,N); o+=N;
-  const expr=new Uint8Array(buf,o,N*G);
+  // packed uint4: two nibbles per byte, row-major flat index k=i*G+g
+  const packed=new Uint8Array(buf,o);
   // map global gene index -> local column
   const geneLocal = new Map();
   if (s.genes==='all') { for(let g=0; g<G; g++) geneLocal.set(g, g); }
   else { s.genes.forEach((gl,li)=> geneLocal.set(gl, li)); }
-  const parsed={x,y,cls,expr,G,N,gmin,gmax,geneLocal};
+  const parsed={x,y,cls,packed,G,N,gmin,gmax,geneLocal};
   cache.set(s.id, parsed);
   return parsed;
 }
@@ -141,6 +154,7 @@ async function selectSection(id){
   CUR = await parseSection(s);
   CUR.sec = s;
   render();
+  if(!window.__urlGeneApplied){ window.__urlGeneApplied=true; applyUrlGene(); }
 }
 
 function classColors(){
@@ -153,8 +167,12 @@ function geneColors(gGlobal){
   const lg = CUR.geneLocal.get(gGlobal);
   const cols = new Array(CUR.N);
   if (lg===undefined){ for(let i=0;i<CUR.N;i++) cols[i]='#dddddd'; return {cols,ok:false}; }
-  const G=CUR.G;
-  for(let i=0;i<CUR.N;i++) cols[i]=magma(CUR.expr[i*G+lg]/255);
+  const G=CUR.G, div=MANIFEST.expr_div||15, pk=CUR.packed;
+  for(let i=0;i<CUR.N;i++){
+    const k=i*G+lg, b=pk[k>>1];
+    const v=(k&1)?(b>>4):(b&0x0F);     // unpack nibble
+    cols[i]=magma(v/div);
+  }
   return {cols,ok:true,lg};
 }
 

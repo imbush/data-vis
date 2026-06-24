@@ -8,13 +8,14 @@ For each section we write a compact little-endian .bin holding:
     x         : float32[ncell]          in-plane coord 1
     y         : float32[ncell]          in-plane coord 2
     class_idx : uint8[ncell]            index into manifest.classes
-    expr      : uint8[ncell*ngene]      per-gene min-max -> 0..255, row-major
-                                        (cell i, local gene g at i*ngene+g)
+    expr      : packed uint4[ncell*ngene]  per-gene min-max -> 0..15, row-major.
+                Two nibbles per byte: value at flat index k = i*ngene+g lives in
+                byte k>>1, low nibble if k even else high nibble.
 
-Expression is uint8 (full 0.0625-equivalent precision via per-gene min-max).
-A section that would exceed MAX_BYTES at the full 1122-gene panel drops its
-lowest-detection genes until it fits (the MERFISH panel is curated, so this
-only trims a tail off the few largest sections).
+Expression is uint4 (16 levels per gene via per-gene min-max) — half the size of
+uint8, so the full 1122-gene panel fits in every section (~67 MB worst case) with
+no gene trimming. A section that somehow still exceeds MAX_BYTES drops its
+lowest-detection genes until it fits.
 
 A single manifest.json indexes every section + the global gene list and the
 class colour table. The explorer fetches manifest.json once, then a section's
@@ -37,6 +38,8 @@ DATA_DIR = os.path.join(OUT_DIR, 'data')
 
 ALL_DONORS = ['Zhuang-ABCA-1', 'Zhuang-ABCA-2', 'Zhuang-ABCA-3', 'Zhuang-ABCA-4']
 MAX_BYTES  = 95 * 1024 * 1024        # keep each .bin safely under GitHub's 100 MB/file
+EXPR_LEVELS = 16                     # uint4: 16 levels per gene (2 nibbles/byte)
+EXPR_DIV    = EXPR_LEVELS - 1        # de-quant / colour divisor (15)
 
 
 def annotation_view(donor):
@@ -86,7 +89,8 @@ def main():
 
         print('  loading expression matrix ...')
         A = ad.read_h5ad(hp)
-        genes = list(A.var_names)
+        # Display gene SYMBOLS (var_names are Ensembl IDs); column order unchanged.
+        genes = list(A.var['gene_symbol']) if 'gene_symbol' in A.var.columns else list(A.var_names)
         if global_genes is None:
             global_genes = genes
         assert genes == global_genes, 'gene panel differs between donors!'
@@ -104,9 +108,8 @@ def main():
             det = (X > 0).mean(0)                          # per-gene detection
 
             # How many genes fit? keep highest-detection genes first.
-            # bytes = 8*ngene (minmax) + 9*ncell (x,y f32 + class u8) + ncell*ngene
-            def fits(ng): return 8 * ng + 9 * ncell + ncell * ng <= MAX_BYTES
-            ng_max = (MAX_BYTES - 9 * ncell) // (ncell + 8)
+            # bytes = 8*ngene (minmax) + 9*ncell (x,y f32 + class u8) + ncell*ngene/2 (uint4)
+            ng_max = (MAX_BYTES - 9 * ncell) // (ncell * 0.5 + 8)
             ng_keep = int(min(len(genes), max(2, ng_max)))
             if ng_keep < len(genes):
                 keep = np.argsort(-det)[:ng_keep]
@@ -115,7 +118,12 @@ def main():
                 keep = np.arange(len(genes))
             Xk = X[:, keep]
             lo = Xk.min(0); hi = Xk.max(0); rng = np.maximum(hi - lo, 1e-9)
-            q = np.clip(np.round((Xk - lo) / rng * 255.0), 0, 255).astype(np.uint8)
+            q = np.clip(np.round((Xk - lo) / rng * EXPR_DIV), 0, EXPR_DIV).astype(np.uint8)
+            # pack two 4-bit values per byte (row-major flat order; low nibble = even index)
+            flat = q.ravel()
+            if flat.size % 2:
+                flat = np.append(flat, 0)
+            packed = (flat[0::2] | (flat[1::2] << 4)).astype(np.uint8)
 
             xy = g[plane].values.astype(np.float32)
             cls_idx = g['class'].map(lambda c: list(class_color).index(c)
@@ -129,7 +137,7 @@ def main():
                 fh.write(np.ascontiguousarray(xy[:, 0]).astype('<f4').tobytes())
                 fh.write(np.ascontiguousarray(xy[:, 1]).astype('<f4').tobytes())
                 fh.write(cls_idx.tobytes())
-                fh.write(np.ascontiguousarray(q).tobytes())
+                fh.write(packed.tobytes())
             sz = os.path.getsize(os.path.join(DATA_DIR, fn))
             sections_manifest.append({
                 'id': str(sec), 'donor': donor, 'plane': plane,
@@ -146,7 +154,9 @@ def main():
     manifest = {
         'genes': global_genes,
         'classes': classes,
-        'expr_levels': 256,
+        'expr_bits': 4,
+        'expr_levels': EXPR_LEVELS,
+        'expr_div': EXPR_DIV,
         'sections': sorted(sections_manifest, key=lambda s: (s['donor'], s['id'])),
     }
     with open(os.path.join(OUT_DIR, 'manifest.json'), 'w') as fh:

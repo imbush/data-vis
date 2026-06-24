@@ -1,10 +1,11 @@
 # Zhuang ABCA whole-brain MERFISH — lazy-loading spatial explorer
 
-`index.html` fetches `manifest.json` + per-section `data/<section>.bin` files on demand.
+`index.html` fetches `manifest.json` + per-section `data/<section>.bin` on demand.
 
-- Built by `src/build_zhuang_sections.py` (one uint8 binary per brain section;
-  per-gene min–max → 0..255; oversized sections drop their lowest-detection genes
-  to stay under the per-file limit).
-- The `data/` binaries total ~8.2 GB for all 4 donors (~1.5 GB for ABCA-3 alone),
-  so they are **git-ignored** and must be hosted off-repo (GitHub Pages caps a site
-  at 1 GB). Point `BASE` in index.html at the data host if not co-located.
+- Built by `src/build_zhuang_sections.py`: one **uint4** binary per brain section
+  (per-gene min–max → 16 levels, 2 nibbles/byte; coords float32; class index uint8).
+  uint4 halves storage, so the full 1,122-gene panel fits in every section.
+- Gene names are Allen WMB symbols (var `gene_symbol`); cells coloured by WMB class
+  or by a searched gene (magma). Deep-link with `?donor=&section=&gene=`.
+- Currently deployed: **Zhuang-ABCA-3** (23 sections, ~0.9 GB). Re-run
+  `build_zhuang_sections.py <DONOR>` to add more donors.
