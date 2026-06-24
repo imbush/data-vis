@@ -482,10 +482,12 @@ h2 {{ margin: 0 0 2px 0; }}
              border:1px solid #ddd; border-radius:3px; background:#fafafa;
              font-size:12px; cursor:pointer; user-select:none; }}
 .subt-chk .ct {{ color:#888; }}
-#recompute-btn {{ font-weight:600; background:#ff7f0e; color:white;
+#recompute-btn, #recompute-all-btn {{ font-weight:600; background:#ff7f0e; color:white;
                   border:1px solid #cc6510; padding:4px 12px; border-radius:3px; cursor:pointer; }}
+#recompute-all-btn {{ background:#d9690a; border-color:#a8500a; margin-left:6px; }}
 #recompute-btn:hover {{ background:#ec6a00; }}
-#recompute-btn:disabled {{ background:#aaa; border-color:#888; cursor:not-allowed; }}
+#recompute-all-btn:hover {{ background:#c05c08; }}
+#recompute-btn:disabled, #recompute-all-btn:disabled {{ background:#aaa; border-color:#888; cursor:not-allowed; }}
 #mean-slider, #std-slider {{ width: 180px; }}
 .ribo-toggle {{ font-size: 12px; color: #555; display: inline-flex;
                 align-items: center; gap: 4px; margin-left: 12px;
@@ -568,6 +570,7 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
     <button class="lin-btn" data-lin="CGE" title="Select CGE-derived subclasses: Vip + Lamp5 + Sncg + Serpinf1 (+ Lamp5 Lhx6)">+CGE</button>
     <button class="lin-btn" data-lin="LGE" title="Select LGE-derived subclasses (rare in cortex; mostly striatal)">+LGE</button>
     <button id="recompute-btn" title="Refit the diffusion embedding on the panel HVG, using only the checked-subtype cells.">Replot with gene panel</button>
+    <button id="recompute-all-btn" title="Refit the diffusion embedding on every gene currently shown in the gene filter (the active gene set ∩ mean/std/ribo sliders), using only the checked-subtype cells. Slower than the panel fit.">Replot (shown genes)</button>
     <span id="recompute-status" style="margin-left:8px;"></span>
   </div>
 </div>
@@ -1017,13 +1020,30 @@ function ageAllowed(i) {{
   return activeAges.has(cell_age[i]);
 }}
 
-// Build z-scored (subset rows, panel columns) matrix as Array of Float64Array rows.
-function buildSubsetPanelZ(cellSel) {{
-  const m = cellSel.length, n = panel_idx.length;
+// The gene indices currently SHOWN in the gene plot (active set ∩ mean/std/ribo
+// sliders) — the same predicate applyGeneFilter() uses for visibility. Used by
+// the "Replot (shown genes)" button so the embedding is fit on whatever genes
+// the user is currently looking at, not just the panel HVG.
+function shownGeneIdx() {{
+  const meanThr = parseFloat(meanSlider.value), stdThr = parseFloat(stdSlider.value);
+  const hideRibo = !!riboSlider && riboThreshold() < 1.0;
+  const mask = gene_sets[activeSet];
+  const out = [];
+  for (let j = 0; j < gene_name.length; j++) {{
+    if (mask[j] && gene_mean[j] >= meanThr && gene_std[j] >= stdThr
+        && !(hideRibo && isRiboCorr(j))) out.push(j);
+  }}
+  return out;
+}}
+
+// Build z-scored (subset rows, selected gene columns) matrix as Array of
+// Float64Array rows. geneIdx defaults to the panel HVG.
+function buildSubsetZ(cellSel, geneIdx) {{
+  const m = cellSel.length, n = geneIdx.length;
   // Per-column mean/std on the subset
   const mean = new Float64Array(n), std = new Float64Array(n);
   for (let k = 0; k < n; k++) {{
-    const j = panel_idx[k];
+    const j = geneIdx[k];
     let s = 0, ss = 0;
     for (let ii = 0; ii < m; ii++) {{
       const v = readVal(cellSel[ii], j);
@@ -1036,7 +1056,7 @@ function buildSubsetPanelZ(cellSel) {{
   for (let ii = 0; ii < m; ii++) {{
     const Zi = new Float64Array(n);
     for (let k = 0; k < n; k++) {{
-      const v = readVal(cellSel[ii], panel_idx[k]);
+      const v = readVal(cellSel[ii], geneIdx[k]);
       Zi[k] = (v - mean[k]) / std[k];
     }}
     Z[ii] = Zi;
@@ -1186,7 +1206,7 @@ function topKEigSym(applyA, m, K, maxIter, tol) {{
   return {{evals, evecs}};
 }}
 
-function recomputeDiffmap() {{
+function recomputeDiffmap(useShownGenes) {{
   const t0 = performance.now();
   const sel = selectedSubtypes();
   const cellSel = [];
@@ -1200,8 +1220,16 @@ function recomputeDiffmap() {{
     return;
   }}
 
-  recomputeStatus.textContent = 'building kNN graph…';
-  const Z = buildSubsetPanelZ(cellSel);
+  // Genes to fit on: the panel HVG (default) or every gene currently shown.
+  const geneIdx = useShownGenes ? shownGeneIdx() : panel_idx;
+  if (geneIdx.length < 2) {{
+    recomputeStatus.innerHTML = '<span style="color:#c00">need ≥2 shown genes (got '
+      + geneIdx.length + ') — widen the gene filter</span>';
+    return;
+  }}
+
+  recomputeStatus.textContent = 'building kNN graph on ' + geneIdx.length + ' genes…';
+  const Z = buildSubsetZ(cellSel, geneIdx);
   const {{rowPtr, colIdx, val, D}} = buildKnnAffinity(Z, KNN_K);
 
   // Symmetric normalized: A = D^{{-1/2}} W D^{{-1/2}}
@@ -1350,7 +1378,8 @@ function recomputeDiffmap() {{
     `margin-right:4px;border-radius:50%;"></span> ${{POLE_NAMES_[p]}} (${{g}}) &nbsp;&nbsp;`).join('');
 
   const dt = ((performance.now() - t0) / 1000).toFixed(2);
-  recomputeStatus.innerHTML = '<b>recomputed</b> on ' + m + ' / ' + n_cells_total + ' cells (' + dt + 's) — '
+  recomputeStatus.innerHTML = '<b>recomputed</b> on ' + m + ' / ' + n_cells_total + ' cells × '
+    + geneIdx.length + (useShownGenes ? ' shown' : ' panel') + ' genes (' + dt + 's) — '
     + 'poles: ' + newPoleTop.map((g, p) => POLE_NAMES_[p] + '=' + g).join(', ');
   lastHoveredCell = null; lastHoveredGene = null;
   // GO bars — rank panel-HVG centroids on each DC axis, ±30 per pole, refetch
@@ -1369,11 +1398,20 @@ function recomputeDiffmap() {{
   }}
 }}
 
-document.getElementById('recompute-btn').addEventListener('click', () => {{
-  const btn = document.getElementById('recompute-btn');
-  btn.disabled = true; recomputeStatus.textContent = 'computing…';
-  setTimeout(() => {{ try {{ recomputeDiffmap(); }} finally {{ btn.disabled = false; }} }}, 30);
-}});
+function wireRecompute(btnId, useShownGenes) {{
+  document.getElementById(btnId).addEventListener('click', () => {{
+    const btns = [document.getElementById('recompute-btn'),
+                  document.getElementById('recompute-all-btn')].filter(Boolean);
+    btns.forEach(b => b.disabled = true);
+    recomputeStatus.textContent = 'computing…';
+    setTimeout(() => {{
+      try {{ recomputeDiffmap(useShownGenes); }}
+      finally {{ btns.forEach(b => b.disabled = false); }}
+    }}, 30);
+  }});
+}}
+wireRecompute('recompute-btn', false);
+wireRecompute('recompute-all-btn', true);
 
 // --- Per-axis GO enrichment bars ---------------------------------------------
 const AXIS_STRIPE_COLORS = ['#d62728', '#1f77b4', '#2ca02c'];
