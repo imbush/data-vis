@@ -66,14 +66,25 @@ OVERLAY_JS = r"""
   const metLayerNum = (typeof MET_LAYER !== 'undefined' && MET_LAYER)
         ? MET_LAYER.map(layerToNum) : null;
 
+  // Optional filter on the patch-seq cells' OWN given cell-type annotations
+  // (Cre line, RNA family/type, imputed Tasic, …). null = no filter (show all).
+  // {values: [per-cell string], allow: Set(category)}.
+  let metGivenFilter = null;
+
   function metActive() {
     const allow = new Set();
     document.querySelectorAll('input[type=checkbox][data-sub]').forEach(cb => {
       if (cb.checked) allow.add(cb.dataset.sub);
     });
-    // If the page exposes no subtype checkboxes, show all.
-    if (allow.size === 0) return MET_IMPUTED_CLUSTER.map(() => 1);
-    return MET_IMPUTED_CLUSTER.map(c => allow.has(c) ? 1 : 0);
+    // Base subtype mask: cell passes if the page exposes no subtype checkboxes,
+    // or its imputed cluster is among the checked ones.
+    const passSub = (i) => (allow.size === 0) || allow.has(MET_IMPUTED_CLUSTER[i]);
+    // Given-cell-type mask, layered on top.
+    const passGiven = (i) => !metGivenFilter
+      || metGivenFilter.allow.has(metGivenFilter.values[i]);
+    const out = new Array(MET_N);
+    for (let i = 0; i < MET_N; i++) out[i] = (passSub(i) && passGiven(i)) ? 1 : 0;
+    return out;
   }
 
   function renderMet() {
@@ -356,6 +367,75 @@ OVERLAY_JS = r"""
       b.addEventListener('click', () => box.querySelectorAll('.psq-var-btn').forEach(x => x.classList.remove('active'))));
   }
 
+  // ---- Subset patch-seq cells by their OWN given cell-type --------------
+  // A box that filters which patch-seq diamonds are shown, by any of their
+  // categorical given annotations (Cre line, RNA family/type, imputed Tasic …).
+  // This is independent of the reference-cell subtype checkboxes; the two
+  // intersect (a diamond shows only if it passes both).
+  function buildPatchseqSubsetBox() {
+    const wrap = document.querySelector('.wrap');
+    if (!wrap || document.getElementById('patchseq-subset-box')) return;
+    // Collect candidate categorical fields from MET_META + imputed labels.
+    const fields = [];  // [label, per-cell values[]]
+    fields.push(['Imputed Tasic subclass',
+      (typeof MET_IMPUTED_SUBCLASS !== 'undefined') ? MET_IMPUTED_SUBCLASS
+        : MET_IMPUTED_CLUSTER.map(c => String(c).split(' ')[0])]);
+    if (typeof MET_META_ORDER !== 'undefined' && typeof MET_META !== 'undefined') {
+      MET_META_ORDER.forEach(l => {
+        const vals = MET_META[l]; if (!vals) return;
+        const uniq = new Set(vals.map(v => (v == null ? '' : String(v))));
+        uniq.delete('');
+        // categorical & not too fine-grained → useful as a subset control
+        if (uniq.size >= 2 && uniq.size <= 60) fields.push([l, vals.map(v => v == null ? '' : String(v))]);
+      });
+    }
+    if (fields.length === 0) return;
+
+    const box = document.createElement('div');
+    box.className = 'ctrl-box'; box.id = 'patchseq-subset-box';
+    let html = '<div class="ctrl-box-title">Subset ' + DATASET_LABEL
+             + ' cells by their own cell-type</div>'
+             + '<div class="controls-row" style="justify-content:center;">'
+             + '<label style="font-size:13px;">Field:&nbsp;<select id="psq-subset-field">';
+    fields.forEach(([l], k) => { html += '<option value="' + k + '">' + l + '</option>'; });
+    html += '</select></label>'
+          + '<button class="qc-btn" id="psq-subset-all">All</button>'
+          + '<button class="qc-btn" id="psq-subset-none">None</button></div>'
+          + '<div class="controls-row" id="psq-subset-cats" style="justify-content:center; flex-wrap:wrap;"></div>';
+    box.innerHTML = html;
+    wrap.appendChild(box);
+
+    const fieldSel = box.querySelector('#psq-subset-field');
+    const catsWrap = box.querySelector('#psq-subset-cats');
+
+    function applyFilter() {
+      const fk = parseInt(fieldSel.value, 10);
+      const vals = fields[fk][1];
+      const allow = new Set();
+      catsWrap.querySelectorAll('input[type=checkbox]').forEach(cb => { if (cb.checked) allow.add(cb.value); });
+      // All checked (or none of the boxes) → treat as no filter so empties show too.
+      const total = catsWrap.querySelectorAll('input[type=checkbox]').length;
+      metGivenFilter = (allow.size === total) ? null : {values: vals, allow: allow};
+      renderMet();
+    }
+    function renderCats() {
+      const fk = parseInt(fieldSel.value, 10);
+      const vals = fields[fk][1];
+      const cats = Array.from(new Set(vals.filter(v => v !== ''))).sort();
+      catsWrap.innerHTML = cats.map(c =>
+        '<label style="font-size:12px; margin:0 6px; white-space:nowrap;">'
+        + '<input type="checkbox" value="' + c.replace(/"/g, '&quot;') + '" checked> ' + c + '</label>').join('');
+      catsWrap.querySelectorAll('input[type=checkbox]').forEach(cb => cb.addEventListener('change', applyFilter));
+      metGivenFilter = null; renderMet();   // new field starts unfiltered
+    }
+    fieldSel.addEventListener('change', renderCats);
+    box.querySelector('#psq-subset-all').addEventListener('click', () => {
+      catsWrap.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = true); applyFilter(); });
+    box.querySelector('#psq-subset-none').addEventListener('click', () => {
+      catsWrap.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false); applyFilter(); });
+    renderCats();
+  }
+
   function boot() {
     if (typeof cellPlot === 'undefined' || !cellPlot.data || !placeBox()) {
       setTimeout(boot, 200); return;
@@ -364,6 +444,7 @@ OVERLAY_JS = r"""
     wireSubtypeSync();
     wireColorSync();
     buildPatchseqVarBox();
+    buildPatchseqSubsetBox();
     document.addEventListener('svd-recomputed', reprojectMet);
     cellPlot.on('plotly_hover', metHover);
     centerAndResize();
