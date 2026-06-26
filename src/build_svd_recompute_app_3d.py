@@ -652,7 +652,7 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
     <label class="rank-label" title="Number of singular components to keep in the recompute (1–3). Lower rank collapses axes: rank=2 puts all points on the PC1×PC2 plane (z=0); rank=1 puts them on the PC1 axis.">rank
       <input id="rank-input" type="number" min="1" max="3" value="3" step="1"></label>
     <button id="recompute-btn" title="Refit SVD on the panel HVG, using only the checked-subtype cells.">Replot with gene panel</button>
-    <button id="recompute-genes-btn" title="Refit SVD using only the genes currently shown in the right biplot (gene set ∩ mean/std/metabolism filters). With no gene filter active this is all genes.">Replot with all genes</button>
+    <button id="recompute-genes-btn" title="Refit SVD using only the genes currently shown in the right biplot (gene set ∩ mean/std/metabolism ∩ recoverability filters), on the checked-subtype cells.">Replot with shown genes</button>
     <span id="recompute-status" style="margin-left:8px;"></span>
   </div>
 </div>
@@ -681,6 +681,17 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
     </label>
     <span class="label" style="margin-left:14px;">Visible:</span>
     <span id="visible-count">{n_panel_disp} / {n_genes}</span>
+  </div>
+  <div class="controls-row" title="Embed the selected cells into a K-dim PCA latent space, then score each gene by how much of its variance is recoverable from that embedding (reconstruction R^2). High = the gene's expression tracks the shared cell-state structure of the selected cells; low = private/independent variation.">
+    <span class="label">Gene structure:</span>
+    <button id="genestruct-btn">Score genes by recoverability</button>
+    <span class="label" style="margin-left:8px;">latent dims K:</span>
+    <input id="genestruct-k" type="range" min="2" max="100" step="1" value="30" style="width:120px; vertical-align:middle;">
+    <span id="genestruct-k-val" style="color:#1f77b4; font-weight:600;">30</span>
+    <span class="label" style="margin-left:14px;">Min recoverability R²:</span>
+    <input id="genestruct-slider" type="range" min="0" max="1" step="0.01" value="0" style="width:120px; vertical-align:middle;" disabled>
+    <span id="genestruct-thr-val">off</span>
+    <span id="genestruct-status" style="color:#555; margin-left:10px;"></span>
   </div>
 </div>
 
@@ -862,14 +873,22 @@ function refreshRiboCount() {{
   if (riboCorrCount) riboCorrCount.textContent = '(' + n + ' hidden)';
   if (riboCorrLabel) riboCorrLabel.textContent = '|r|≤' + t.toFixed(2);
 }}
+// Per-gene recoverability R^2 from a K-dim PCA of the selected cells; null until
+// the user clicks "Score genes by recoverability". Invalidated when the cell
+// selection changes (recompute / subtype toggles) so the filter never uses stale values.
+let gene_struct = null;
+
 function applyGeneFilter() {{
   const meanThr = parseFloat(meanSlider.value), stdThr = parseFloat(stdSlider.value);
   const hideRibo = !!riboSlider && riboThreshold() < 1.0;
+  const gsSlider = document.getElementById('genestruct-slider');
+  const structThr = (gene_struct && gsSlider) ? parseFloat(gsSlider.value) : 0;
   const mask = gene_sets[activeSet], n = gene_name.length;
   const xs = new Array(n), ys = new Array(n), zs = new Array(n); let visible = 0;
   for (let j = 0; j < n; j++) {{
     if (mask[j] && gene_mean[j] >= meanThr && gene_std[j] >= stdThr
-        && !(hideRibo && isRiboCorr(j))) {{
+        && !(hideRibo && isRiboCorr(j))
+        && (!gene_struct || gene_struct[j] >= structThr)) {{
       xs[j]=gene_x[j]; ys[j]=gene_y[j]; zs[j]=gene_z[j]; visible++;
     }} else {{ xs[j]=null; ys[j]=null; zs[j]=null; }}
   }}
@@ -929,6 +948,105 @@ geneSearch.addEventListener('change', runSearch);
 geneSearch.addEventListener('keydown', e => {{ if (e.key === 'Enter') runSearch(); }});
 document.getElementById('search-clear').addEventListener('click', function() {{
   geneSearch.value = ''; clearSearch();
+}});
+
+// ---- Gene-structure (recoverability R^2) ---------------------------------
+// Embed the selected cells into a K-dim PCA latent space (eigendecomposition of
+// the panel covariance, equivalent to SVD but cheaper for large K), then score
+// each gene by the fraction of its variance recoverable from that embedding:
+//   R^2_j = sum_k (u_k . z_j)^2 / ||z_j||^2   (u_k = orthonormal cell-space PCs,
+//   z_j = gene j z-scored over the selected cells). Computed entirely client-side.
+const gsBtn      = document.getElementById('genestruct-btn');
+const gsK        = document.getElementById('genestruct-k');
+const gsKval     = document.getElementById('genestruct-k-val');
+const gsSlider2  = document.getElementById('genestruct-slider');
+const gsThrVal   = document.getElementById('genestruct-thr-val');
+const gsStatus   = document.getElementById('genestruct-status');
+gsK.addEventListener('input', () => {{ gsKval.textContent = gsK.value; }});
+
+function invalidateGeneStruct() {{
+  if (!gene_struct) return;
+  gene_struct = null;
+  gsSlider2.value = 0; gsSlider2.disabled = true; gsThrVal.textContent = 'off';
+  gsStatus.innerHTML = '<span style="color:#999">cell selection changed — rescore</span>';
+}}
+
+function computeGeneStructure() {{
+  const sel = selectedSubtypes();
+  const cellSel = [];
+  for (let i = 0; i < cell_subtype.length; i++)
+    if (sel.has(cell_subtype[i]) && regionAllowed(i) && ageAllowed(i)) cellSel.push(i);
+  const m = cellSel.length;
+  if (m < 5) {{ gsStatus.innerHTML = '<span style="color:#c00">need ≥5 cells</span>'; return; }}
+  const np = panel_idx.length;
+  let K = Math.max(2, Math.min(parseInt(gsK.value) || 30, np - 1, m - 1));
+
+  // Zp: m × np, panel genes z-scored on the selected cells.
+  const Zp = new Array(m); for (let i = 0; i < m; i++) Zp[i] = new Float64Array(np);
+  for (let k = 0; k < np; k++) {{
+    const j = panel_idx[k]; let s = 0, ss = 0;
+    for (let ii = 0; ii < m; ii++) {{ const v = readVal(cellSel[ii], j); Zp[ii][k] = v; s += v; ss += v*v; }}
+    const mean = s/m, sd = Math.sqrt(Math.max(ss/m - mean*mean, 1e-18));
+    for (let ii = 0; ii < m; ii++) Zp[ii][k] = (Zp[ii][k] - mean) / sd;
+  }}
+  // Panel covariance C = Zp^T Zp  (np × np), eigendecompose top-K via power iteration.
+  const C = new Array(np);
+  for (let a = 0; a < np; a++) {{
+    const Ca = new Float64Array(np);
+    for (let ii = 0; ii < m; ii++) {{ const za = Zp[ii][a]; if (za === 0) continue;
+      const Zi = Zp[ii]; for (let b = a; b < np; b++) Ca[b] += za * Zi[b]; }}
+    C[a] = Ca;
+  }}
+  for (let a = 0; a < np; a++) for (let b = a+1; b < np; b++) C[b][a] = C[a][b];  // symmetrize
+  const {{U: Vc, S: eig}} = powerIterTopK(C, K, 60);   // Vc[k]=eigvec(np), eig[k]=eigval=S_k^2
+
+  // Cell-space orthonormal vectors u_k = Zp · Vc_k / S_k  (length m).
+  const Uk = [];
+  for (let k = 0; k < K; k++) {{
+    const sk = Math.sqrt(Math.max(eig[k], 1e-18));
+    const uk = new Float64Array(m); const vk = Vc[k];
+    for (let ii = 0; ii < m; ii++) {{ let acc = 0; const Zi = Zp[ii];
+      for (let a = 0; a < np; a++) acc += Zi[a] * vk[a]; uk[ii] = acc / sk; }}
+    Uk.push(uk);
+  }}
+  // Per-gene R^2 over ALL genes (panel + broader).
+  const n_all = gene_name.length;
+  const r2 = new Float32Array(n_all);
+  for (let j = 0; j < n_all; j++) {{
+    let s = 0, ss = 0;
+    for (let ii = 0; ii < m; ii++) {{ const v = readVal(cellSel[ii], j); s += v; ss += v*v; }}
+    const mean = s/m, varj = Math.max(ss/m - mean*mean, 1e-18);
+    let energy = 0;
+    for (let k = 0; k < K; k++) {{ const uk = Uk[k]; let dot = 0;
+      for (let ii = 0; ii < m; ii++) dot += (readVal(cellSel[ii], j) - mean) * uk[ii];
+      energy += dot * dot; }}
+    r2[j] = Math.max(0, Math.min(1, energy / (varj * m)));
+  }}
+  gene_struct = r2;
+  // enable the filter slider, colour genes, report the top hits
+  gsSlider2.disabled = false; gsSlider2.value = 0; gsThrVal.textContent = 'off';
+  colorGenesByStruct();
+  const order = Array.from(r2.keys()).sort((a,b) => r2[b] - r2[a]);
+  const top = order.slice(0, 8).map(j => gene_name[j] + ' (' + r2[j].toFixed(2) + ')');
+  const panelMean = panel_idx.reduce((a,j)=>a+r2[j],0)/np;
+  gsStatus.innerHTML = '<b>K=' + K + '</b>, ' + m + ' cells · top: ' + top.join(', ')
+    + ' · panel mean R²=' + panelMean.toFixed(2);
+}}
+
+function colorGenesByStruct() {{
+  if (!gene_struct) return;
+  const colors = Array.from(gene_struct, v => viridis[Math.max(0, Math.min(255, Math.round(255*v)))]);
+  Plotly.restyle(genePlot, {{'marker.color': [colors]}}, [POINTS_TRACE]);
+  setColorKeyGradient('gene recoverability R²', 'viridis', 0, 1, v => v.toFixed(2));
+}}
+
+gsBtn.addEventListener('click', () => {{
+  gsBtn.disabled = true; gsStatus.textContent = 'scoring…';
+  setTimeout(() => {{ try {{ computeGeneStructure(); }} finally {{ gsBtn.disabled = false; }} }}, 30);
+}});
+gsSlider2.addEventListener('input', () => {{
+  gsThrVal.textContent = parseFloat(gsSlider2.value) > 0 ? (+gsSlider2.value).toFixed(2) : 'off';
+  applyGeneFilter();
 }});
 
 function valuesToViridis(values) {{
@@ -1122,6 +1240,12 @@ function selectedSubtypes() {{
   subtypeCheckboxes.forEach(cb => {{ if (cb.checked) out.add(cb.dataset.sub); }});
   return out;
 }}
+
+// Any change to the cell selection makes a previously-computed gene-structure
+// score stale, so drop it (and disable its filter) when the selection changes.
+subtypeCheckboxes.forEach(cb => cb.addEventListener('change', invalidateGeneStruct));
+document.querySelectorAll('.grp-toggle, #subt-all, #subt-none, .lin-btn, .rg-btn, .ag-btn, .ag-btn-all')
+  .forEach(b => b.addEventListener('click', invalidateGeneStruct));
 
 // Region toggle ("both" → no filter, else only cells with that dissected_region)
 let activeRegion = 'both';
@@ -1439,10 +1563,13 @@ function visibleGeneIdx() {{
   const stdThr  = parseFloat(stdSlider.value);
   const mask = gene_sets[activeSet];
   const hideRibo = !!riboSlider && riboThreshold() < 1.0;
+  const gsSlider = document.getElementById('genestruct-slider');
+  const structThr = (gene_struct && gsSlider) ? parseFloat(gsSlider.value) : 0;
   const out = [];
   for (let j = 0; j < gene_name.length; j++) {{
     if (mask[j] && gene_mean[j] >= meanThr && gene_std[j] >= stdThr
-        && !(hideRibo && isRiboCorr(j))) out.push(j);
+        && !(hideRibo && isRiboCorr(j))
+        && (!gene_struct || gene_struct[j] >= structThr)) out.push(j);
   }}
   return out;
 }}
