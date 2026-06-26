@@ -10,6 +10,12 @@
 cache/
 *.pkl
 
+# Large binary blobs — ignored by default so stray/regenerated shards don't
+# silently bloat the repo. EXCEPTION: the Zhuang spatial MERFISH shards are
+# deployment artifacts that GitHub Pages serves directly, so keep them tracked.
+*.bin
+!spatial_zhuang/data/*.bin
+
 # Python
 __pycache__/
 *.pyc

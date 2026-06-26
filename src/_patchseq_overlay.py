@@ -18,7 +18,7 @@ The overlay:
   - Subtype-checkbox subsetting hides the matching patch-seq cells too.
   - Retitles the page and swaps in the patch-seq data citation footer.
 """
-import os, re
+import os, re, json
 
 ROOT = '/Users/inlebush/cs/lab/green/sequencing/tasic2018_v1_merfish'
 SITE = '/Users/inlebush/cs/lab/green/data-vis'
@@ -458,10 +458,51 @@ OVERLAY_JS = r"""
 """
 
 
-def assemble(base_html_path, out_html_path, js_consts, h2_title, citation_html):
-    """Inject the overlay into a base recompute explorer HTML and write the result."""
+def assemble(base_html_path, out_html_path, js_consts, h2_title, citation_html,
+             met_gene_names=None):
+    """Inject the overlay into a base recompute explorer HTML and write the result.
+
+    If `met_gene_names` is given (the column order of the MET expression matrix,
+    i.e. the pkl's `broader_genes`), assert it matches the base explorer's
+    `gene_name` order. reprojectMet() indexes MET expression by the base HTML's
+    `basisIdx` (indices into `gene_name`), so a divergence would silently scramble
+    genes during live re-projection. Failing loudly here is the cheap guard.
+    """
     with open(base_html_path) as f:
         html = f.read()
+
+    if met_gene_names is not None:
+        m = re.search(r'const gene_name\s*=\s*(\[.*?\]);', html, flags=re.S)
+        if m is None:
+            raise ValueError(f'could not find `const gene_name` array in {base_html_path}; '
+                             'cannot verify MET gene-order coupling')
+        base_genes = json.loads(m.group(1))
+        met_genes = list(met_gene_names)
+        if base_genes != met_genes:
+            # find the first divergence for a useful message
+            n = min(len(base_genes), len(met_genes))
+            first = next((i for i in range(n) if base_genes[i] != met_genes[i]), n)
+            raise ValueError(
+                'MET gene order does not match the base explorer gene order — '
+                'reprojectMet() would scramble genes.\n'
+                f'  base ({len(base_genes)} genes) vs MET ({len(met_genes)} genes); '
+                f'first mismatch at index {first}: '
+                f'base={base_genes[first] if first < len(base_genes) else "<end>"!r} '
+                f'met={met_genes[first] if first < len(met_genes) else "<end>"!r}\n'
+                f'  base HTML: {base_html_path}\n'
+                '  Rebuild the base explorer and the MET pkl from the same proj_full '
+                'so their gene_names align.')
+
+    # 0. Fix the viz-nav links. The base explorer's nav uses bare sibling
+    # filenames (e.g. "allinhib_svd_recompute_explorer_3d.html"), which resolve
+    # relative to patchseq/ (where this overlay is written) and 404. Rewrite them
+    # to point back at the base cohort's folder (../<cohort>/<file>).
+    base_cohort = os.path.basename(os.path.dirname(base_html_path))
+    if os.path.basename(os.path.dirname(out_html_path)) != base_cohort:
+        html = re.sub(
+            r'(class="viz-nav-btn[^"]*"\s+href=")([^"./][^"]*\.html)"',
+            lambda m: f'{m.group(1)}../{base_cohort}/{m.group(2)}"',
+            html)
 
     # 1. Page <title> (covers the redesigned-base form).
     html = re.sub(r'<title>.*?</title>', f'<title>{h2_title}</title>', html, count=1)

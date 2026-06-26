@@ -1211,7 +1211,7 @@ function recomputeDiffmap(useShownGenes) {{
   const sel = selectedSubtypes();
   const cellSel = [];
   for (let i = 0; i < cell_subtype.length; i++) {{
-    if (sel.has(cell_subtype[i]) && regionAllowed(i)) cellSel.push(i);
+    if (sel.has(cell_subtype[i]) && regionAllowed(i) && ageAllowed(i)) cellSel.push(i);
   }}
   const m = cellSel.length;
   if (m < KNN_K + 1) {{

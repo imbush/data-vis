@@ -1271,10 +1271,10 @@ function recomputeNMF(basisIdx, basisLabel) {{
   basisLabel = basisLabel || 'panel HVG';
   const t0 = performance.now();
   const sel = selectedSubtypes();
-  // Cell index list of selected cells (subtype-checked AND region-allowed).
+  // Cell index list of selected cells (subtype-checked AND region-allowed AND age-allowed).
   const cellSel = [];
   for (let i = 0; i < cell_subtype.length; i++) {{
-    if (sel.has(cell_subtype[i]) && regionAllowed(i)) cellSel.push(i);
+    if (sel.has(cell_subtype[i]) && regionAllowed(i) && ageAllowed(i)) cellSel.push(i);
   }}
   const m = cellSel.length;
   if (m < K_ARCH + 1) {{

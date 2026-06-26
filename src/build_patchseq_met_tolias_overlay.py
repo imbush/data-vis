@@ -85,7 +85,8 @@ def main():
         f"const DATASET_LABEL = {json.dumps('MOp Patch-seq (Scala 2020)')};\n"
     )
 
-    size = ov.assemble(BASE_HTML, OUT_HTML, js_consts, TITLE, CITATION)
+    size = ov.assemble(BASE_HTML, OUT_HTML, js_consts, TITLE, CITATION,
+                       met_gene_names=met['broader_genes'])
     print(f'wrote {OUT_HTML} ({size/1e6:.1f} MB)')
 
 
