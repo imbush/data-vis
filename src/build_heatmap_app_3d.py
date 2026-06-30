@@ -462,7 +462,7 @@ def main():
 <style>
 {base.UNIFIED_DESIGN_CSS}
 html, body {{ height: 100%; margin: 0; padding: 0; }}
-body {{ display: flex; flex-direction: column; padding: 6px 12px; box-sizing: border-box; }}
+body {{ display: flex; flex-direction: column; padding: 6px 12px; box-sizing: border-box; overflow-y: auto; }}
 h2 {{ margin: 0 0 2px 0; }}
 .hint {{ flex: 0 0 auto; font-size: 17px; color: #222; line-height: 1.3; margin: 2px 0 6px 0; }}
 .hint b {{ color: #1f77b4; }}
@@ -554,13 +554,15 @@ h2 {{ margin: 0 0 2px 0; }}
                       font-variant-numeric: tabular-nums; min-width: 50px;
                       text-align: right; }}
 .go-bar.empty {{ color: #999; font-style: italic; }}
-.viz-stack {{ flex: 1 1 auto; display: flex; flex-direction: column;
-              min-height: 0; gap: 6px; }}
+/* base.UNIFIED_DESIGN_CSS hides .viz-stack globally (display:none !important);
+   this is the heatmap explorer, so force it visible. */
+.viz-stack {{ display: flex !important; flex: 0 0 auto; flex-direction: column;
+              min-height: 460px; gap: 6px; }}
 .viz-stack > .row {{ flex: 2 1 0; min-height: 200px; }}
 .row {{ display: flex; flex-direction: row; gap: 8px; min-height: 0; }}
 .col {{ flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }}
 .col > .plotly-graph-div {{ flex: 1 1 auto; min-height: 0; height: 100% !important; }}
-.heatmap-row {{ flex: 1 1 0; min-height: 380px; display: flex; flex-direction: column;
+.heatmap-row {{ flex: 0 0 auto; height: 460px; min-height: 460px; display: flex; flex-direction: column;
                 background: #fafafa; border: 1px solid #e0e0e0; border-radius: 3px;
                 padding: 4px 6px; }}
 .heatmap-caption {{ font-size: 11px; color: #555; line-height: 1.2;
