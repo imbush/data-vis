@@ -215,6 +215,8 @@ def main():
     gx, gy, gz = (np.round(gene_xyz[:, k], 4).tolist() for k in range(3))
     cx, cy, cz = (np.round(cell_xyz[:, k], 4).tolist() for k in range(3))
 
+    panel_idx = [j for j, p in enumerate(in_panel.tolist()) if p]
+
     # gene-set masks
     panel_mask_list = in_panel.tolist()
     set_masks = {'all': [True] * n_genes, 'panel': panel_mask_list}
@@ -293,6 +295,7 @@ def main():
         f"const gene_default_colors = {json.dumps(gene_color_default)};\n"
         f"const cell_dom_color = {json.dumps(cell_dom_color)};\n"
         f"const SET_MASKS = {json.dumps(set_masks)};\n"
+        f"const panel_idx = {json.dumps(panel_idx)};\n"
         f"const qc_total = {json.dumps([round(float(v),2) for v in qc_total])};\n"
         f"const qc_ngenes = {json.dumps([int(v) for v in qc_ngenes])};\n"
         f"const qc_ribo = {json.dumps([round(float(v),3) for v in qc_ribo])};\n"
@@ -353,6 +356,11 @@ button {{ font-size: 13px; padding: 4px 10px; }}
 .mk-sep {{ display: flex; align-items: center; gap: 6px; font-size: 11px; color: #555; }}
 .mk-sepbar {{ height: 7px; background: #6a8f3c; border-radius: 4px; min-width: 1px; }}
 .mk-rule {{ height: 1px; background: #eee; grid-column: 1 / -1; }}
+.genestruct-box {{ display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+                   border: 1px solid #cdd6e0; background: #f4f8fc; border-radius: 6px;
+                   padding: 6px 10px; margin: 4px 0; font-size: 12px; }}
+.genestruct-box .gs-title {{ font-weight: 700; color: #1f5d8c; margin-right: 6px; }}
+#genestruct-status {{ color: #555; font-size: 12px; }}
 </style>
 </head>
 <body>
@@ -419,6 +427,18 @@ button {{ font-size: 13px; padding: 4px 10px; }}
     <span class="label" style="margin-left:14px;">Considered:</span>
     <span id="visible-count">0 / {n_genes}</span>
   </div>
+  <div class="genestruct-box" title="Embed the active cells into a K-dim PCA latent space, then score each gene by how much of its variance is recoverable from that embedding (reconstruction R^2). High = the gene tracks the shared cell-state structure of the active cells; low = private/independent variation. The Min recoverability R² slider feeds the considered-gene filter.">
+    <span class="gs-title">Gene structure (recoverability)</span>
+    <button id="genestruct-btn" class="qc-btn">Score genes</button>
+    <button id="genestruct-color" class="qc-btn" disabled>Colour by recoverability</button>
+    <span class="label" style="margin-left:8px;">latent dims K:</span>
+    <input id="genestruct-k" type="range" min="2" max="100" step="1" value="30" style="width:110px; vertical-align:middle;">
+    <span id="genestruct-k-val" style="color:#1f77b4; font-weight:600;">30</span>
+    <span class="label" style="margin-left:10px;">Min recoverability R²:</span>
+    <input id="genestruct-slider" type="range" min="0" max="1" step="0.01" value="0" style="width:110px; vertical-align:middle;" disabled>
+    <span id="genestruct-thr-val">off</span>
+    <span id="genestruct-status" style="margin-left:8px;"></span>
+  </div>
 </div>
 
 <div class="ctrl-box">
@@ -470,6 +490,8 @@ let colorMode = 'group';      // group | subtype | counts | genes | ribo | layer
 let activeGene = -1;          // gene index when colorMode === 'gene'
 let geneActive = new Array(N_GENES).fill(false);
 let curMarkers = [];
+// readVal(i,j): log-CPM expression the gene-structure PCA needs.
+function readVal(i, j){ return expr_matrix[i*N_GENES+j] / EXPR_SCALE; }
 
 // ---- group helpers ---------------------------------------------------------
 function cellGroup(i) {
@@ -598,6 +620,7 @@ function assign(sub, grp) {
 function onGroupsChanged() {
   syncGroupButtons();
   clearMarkers();
+  invalidateGeneStruct();
   renderCells();
 }
 document.querySelectorAll('.mk-ab').forEach(b => b.addEventListener('click', () => {
@@ -638,12 +661,15 @@ const stdSlider = document.getElementById('std-slider');
 function applyGeneFilter() {
   const mask = SET_MASKS[curSet];
   const mmin = parseFloat(meanSlider.value), smin = parseFloat(stdSlider.value);
+  const gsSlider = document.getElementById('genestruct-slider');
+  const structThr = (gene_struct && gsSlider) ? parseFloat(gsSlider.value) : 0;
   document.getElementById('mean-value').textContent = mmin.toFixed(2);
   document.getElementById('std-value').textContent = smin.toFixed(2);
   let n = 0;
   const gx = new Array(N_GENES), gy = new Array(N_GENES), gz = new Array(N_GENES);
   for (let j = 0; j < N_GENES; j++) {
-    const ok = mask[j] && gene_mean[j] >= mmin && gene_std[j] >= smin;
+    const ok = mask[j] && gene_mean[j] >= mmin && gene_std[j] >= smin
+      && (!gene_struct || gene_struct[j] >= structThr);
     geneActive[j] = ok;
     if (ok) { gx[j] = gene_x[j]; gy[j] = gene_y[j]; gz[j] = gene_z[j]; n++; }
     else { gx[j] = null; gy[j] = null; gz[j] = null; }
@@ -883,6 +909,93 @@ function replot(useAllGenes) {
   ringGene(-1);
   if (fs) fs.textContent = 'Re-fit SVD on ' + m + ' cells × ' + n + (useAllGenes ? ' shown' : ' panel') + ' genes.';
 }
+
+// ---- Gene-structure (recoverability R^2) ----------------------------------
+let gene_struct = null;
+const gsBtn    = document.getElementById('genestruct-btn');
+const gsColor  = document.getElementById('genestruct-color');
+const gsK      = document.getElementById('genestruct-k');
+const gsKval   = document.getElementById('genestruct-k-val');
+const gsSlider2= document.getElementById('genestruct-slider');
+const gsThrVal = document.getElementById('genestruct-thr-val');
+const gsStatus = document.getElementById('genestruct-status');
+gsK.addEventListener('input', () => { gsKval.textContent = gsK.value; });
+function invalidateGeneStruct() {
+  if (!gene_struct) return;
+  gene_struct = null;
+  gsSlider2.disabled = true; gsColor.disabled = true;
+  gsStatus.innerHTML = '<span style="color:#999">cell selection changed — rescore</span>';
+  applyGeneFilter();
+}
+function computeGeneStructure() {
+  const cellSel = [];
+  for (let i = 0; i < N_CELLS; i++) if (cellActiveAt(i)) cellSel.push(i);
+  const m = cellSel.length;
+  if (m < 5) { gsStatus.innerHTML = '<span style="color:#c00">need &ge;5 cells</span>'; return; }
+  const np = panel_idx.length;
+  let K = Math.max(2, Math.min(parseInt(gsK.value) || 30, np - 1, m - 1));
+  const Zp = new Array(m); for (let i = 0; i < m; i++) Zp[i] = new Float64Array(np);
+  for (let k = 0; k < np; k++) {
+    const j = panel_idx[k]; let s = 0, ss = 0;
+    for (let ii = 0; ii < m; ii++) { const v = readVal(cellSel[ii], j); Zp[ii][k] = v; s += v; ss += v*v; }
+    const mean = s/m, sd = Math.sqrt(Math.max(ss/m - mean*mean, 1e-18));
+    for (let ii = 0; ii < m; ii++) Zp[ii][k] = (Zp[ii][k] - mean) / sd;
+  }
+  const C = new Array(np);
+  for (let a = 0; a < np; a++) { const Ca = new Float64Array(np);
+    for (let ii = 0; ii < m; ii++) { const za = Zp[ii][a]; if (za === 0) continue;
+      const Zi = Zp[ii]; for (let b = a; b < np; b++) Ca[b] += za * Zi[b]; }
+    C[a] = Ca; }
+  for (let a = 0; a < np; a++) for (let b = a+1; b < np; b++) C[b][a] = C[a][b];
+  const {U: Vc, S: eig} = powerIterTopK(C, K, 60);
+  const Uk = [];
+  for (let k = 0; k < K; k++) {
+    const sk = Math.sqrt(Math.max(eig[k], 1e-18));
+    const uk = new Float64Array(m); const vk = Vc[k];
+    for (let ii = 0; ii < m; ii++) { let acc = 0; const Zi = Zp[ii];
+      for (let a = 0; a < np; a++) acc += Zi[a] * vk[a]; uk[ii] = acc / sk; }
+    Uk.push(uk);
+  }
+  const n_all = gene_name.length;
+  const r2 = new Float32Array(n_all);
+  for (let j = 0; j < n_all; j++) {
+    let s = 0, ss = 0;
+    for (let ii = 0; ii < m; ii++) { const v = readVal(cellSel[ii], j); s += v; ss += v*v; }
+    const mean = s/m, varj = Math.max(ss/m - mean*mean, 1e-18);
+    let energy = 0;
+    for (let k = 0; k < K; k++) { const uk = Uk[k]; let dot = 0;
+      for (let ii = 0; ii < m; ii++) dot += (readVal(cellSel[ii], j) - mean) * uk[ii];
+      energy += dot * dot; }
+    r2[j] = Math.max(0, Math.min(1, energy / (varj * m)));
+  }
+  gene_struct = r2;
+  gsSlider2.disabled = false; gsColor.disabled = false;
+  gsThrVal.textContent = parseFloat(gsSlider2.value) > 0 ? (+gsSlider2.value).toFixed(2) : 'off';
+  colorGenesByStruct();
+  applyGeneFilter();
+  const order = Array.from(r2.keys()).sort((a,b) => r2[b] - r2[a]);
+  const top = order.slice(0, 8).map(j => gene_name[j] + ' (' + r2[j].toFixed(2) + ')');
+  const panelMean = panel_idx.reduce((a,j)=>a+r2[j],0)/np;
+  gsStatus.innerHTML = '<b>K=' + K + '</b>, ' + m + ' cells · top: ' + top.join(', ')
+    + ' · panel mean R²=' + panelMean.toFixed(2);
+}
+function colorGenesByStruct() {
+  if (!gene_struct) return;
+  // recolour only the GENE biplot by recoverability; leave the cell plot's
+  // current colour mode untouched (marker has no 'qc' cell mode).
+  const colors = Array.from(gene_struct, v => viridis[Math.max(0, Math.min(255, Math.round(255*v)))]);
+  Plotly.restyle(genePlot, {'marker.color': [colors]}, [POINTS_TRACE]);
+  setColorKeyGradient('gene recoverability R²', 'viridis', 0, 1, v => v.toFixed(2));
+}
+gsBtn.addEventListener('click', () => {
+  gsBtn.disabled = true; gsStatus.textContent = 'scoring…';
+  setTimeout(() => { try { computeGeneStructure(); } finally { gsBtn.disabled = false; } }, 30);
+});
+gsColor.addEventListener('click', colorGenesByStruct);
+gsSlider2.addEventListener('input', () => {
+  gsThrVal.textContent = parseFloat(gsSlider2.value) > 0 ? (+gsSlider2.value).toFixed(2) : 'off';
+  applyGeneFilter();
+});
 
 // ---- boot ------------------------------------------------------------------
 function boot() {
