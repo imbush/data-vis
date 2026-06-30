@@ -424,8 +424,20 @@ or <b>mutual information</b> (any dependence). Hover a result to recolour the ce
 </div>
 
 <div class="ctrl-box">
-  <div class="ctrl-box-title">Focus Gene &amp; Association</div>
-  <div class="controls-row" style="gap:10px;">
+  <div class="ctrl-box-title">Focus Variable &amp; Association</div>
+  <div class="controls-row" id="ga-focustype-row" style="gap:6px;">
+    <span class="label">Focus on:</span>
+    <button id="ft-gene" class="qc-btn active" title="Rank genes by association to a focus GENE's expression.">Gene</button>
+    <button id="ft-layer" class="qc-btn" title="Rank genes by association to the cell's dissected cortical-layer depth.">Layer of microdissection</button>
+    <button id="ft-pt" class="qc-btn" title="Rank genes by association to rooted pseudotime (distance in PC1-3 from a chosen root cell; falls back to PC1).">Pseudotime</button>
+    <button id="ft-ribo" class="qc-btn" title="Rank genes by association to each cell's % ribosomal counts.">% ribo</button>
+    <span id="ga-root-controls" style="margin-left:10px; display:none;">
+      <button id="pick-root" class="qc-btn" title="Arm, then click a cell in the left plot to set it as the pseudotime root.">Pick root cell</button>
+      <button id="clear-root" class="qc-btn" style="display:none;">clear root</button>
+      <span id="root-status" style="margin-left:6px; color:var(--muted);"></span>
+    </span>
+  </div>
+  <div class="controls-row" id="ga-genefocus-row" style="gap:10px;">
     <span class="label">Focus gene:</span>
     <input id="focus-gene" list="gene-datalist" placeholder="e.g. Pvalb" autocomplete="off">
     <button id="focus-clear">clear</button>{gene_datalist}
@@ -598,7 +610,7 @@ function refreshTitles(){
         : colorMode==='gene' ? (gene_name[activeGene]+' expression')
         : (colorMode==='subtype'?'subtype':(colorMode==='counts'?'total counts':(colorMode==='genes'?'genes detected':(colorMode==='ribo'?'% ribosomal':'layer'))));
   if (ct) ct.innerHTML='Cells on <b>SVD</b> axes · coloured by <b>'+cl+'</b> · n='+getSel().length.toLocaleString();
-  const gl = focusGene>=0 ? (metric==='corr'?'correlation to ':'mutual info with ')+gene_name[focusGene] : 'strongest PC';
+  const gl = focusActive() ? (metric==='corr'?'correlation to ':'mutual info with ')+focusLabel() : 'strongest PC';
   if (gt) gt.innerHTML='Genes on <b>SVD</b> axes · coloured by <b>'+gl+'</b>';
 }
 
@@ -760,19 +772,81 @@ function applyGeneFilter(){
 function visibleGeneIdx(){ const out=[]; for(let j=0;j<N_GENES;j++) if(geneActive[j]) out.push(j); return out; }
 document.querySelectorAll('.set-btn').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('.set-btn').forEach(x=>x.classList.remove('active'));
-  b.classList.add('active'); curSet=b.dataset.set; applyGeneFilter(); if(focusGene>=0) computeAssoc();
+  b.classList.add('active'); curSet=b.dataset.set; applyGeneFilter(); if(focusActive()) computeAssoc();
 }));
 meanSlider.addEventListener('input',applyGeneFilter);
 stdSlider.addEventListener('input',applyGeneFilter);
 
+// ---- focus value / focus binning -------------------------------------------
+// The association can focus on a GENE (focusType==='gene', focusGene>=0) or on a
+// per-cell numeric CELL VARIABLE (focusType in layer|pt|ribo, focusVec[] over
+// ALL cells). These helpers give the focus value / focus MI-bin for any cell so
+// computeCorr / computeMI stay agnostic to which kind of focus is active.
+let focusType = 'gene';      // gene | layer | pt | ribo
+let focusVec = null;         // plain Array over ALL cells when focusType!=='gene'
+let rootCell = -1;           // chosen pseudotime root (global cell index) or -1
+function focusActive(){ return focusType==='gene' ? focusGene>=0 : !!focusVec; }
+function focusValAt(i){ return focusType==='gene' ? expr_matrix[i*N_GENES+focusGene] : focusVec[i]; }
+function focusLabel(){
+  if(focusType==='gene') return gene_name[focusGene];
+  if(focusType==='layer') return 'layer of microdissection';
+  if(focusType==='pt') return rootCell>=0 ? ('rooted pseudotime (root #'+rootCell+')') : 'pseudotime (PC1)';
+  return '% ribo';
+}
+// Rooted pseudotime over ALL cells: Euclidean distance in the 3 PC scores from
+// the chosen root cell; falls back to PC1 when no root is set. Returns a plain
+// Array (NOT a typed array — the viridis colour path coerces typed arrays to NaN).
+function rootedPseudotime(){
+  const out=new Array(N_CELLS);
+  if(rootCell>=0){ const r=cell_score[rootCell];
+    for(let i=0;i<N_CELLS;i++){ const s=cell_score[i];
+      const dx=s[0]-r[0], dy=s[1]-r[1], dz=s[2]-r[2];
+      out[i]=Math.sqrt(dx*dx+dy*dy+dz*dz); } }
+  else { for(let i=0;i<N_CELLS;i++) out[i]=cell_score[i][0]; }
+  return out;
+}
+// Build the focus vector for the current cell-variable focus type over ALL cells.
+function buildFocusVec(){
+  if(focusType==='layer'){ focusVec = (cell_layer||[]).map(layerToDepth);
+    if(!cell_layer) focusVec=new Array(N_CELLS).fill(NaN); }
+  else if(focusType==='pt'){ focusVec = rootedPseudotime(); }
+  else if(focusType==='ribo'){ focusVec = Array.from(qc_ribo); }
+  else focusVec = null;
+}
+// Per-cell MI bin for the focus over the SELECTED cells. Gene focus reuses the
+// precomputed expression binMat; a cell-variable focus is binned into ~MI_BINS
+// quantile bins over the (finite) focus values of the selected cells. Returns a
+// {bin: Int array indexed by global cell idx, valid: bool} object.
+function focusBins(sel){
+  if(focusType==='gene'){ const bin=new Int16Array(N_CELLS);
+    for(let a=0;a<sel.length;a++){ const i=sel[a]; bin[i]=binMat[i*N_GENES+focusGene]; }
+    return {bin, valid:true}; }
+  const B=MI_BINS;
+  const vals=[]; for(let a=0;a<sel.length;a++){ const v=focusVec[sel[a]]; if(isFinite(v)) vals.push(v); }
+  const bin=new Int16Array(N_CELLS).fill(-1);
+  if(vals.length<2) return {bin, valid:false};
+  const sorted=vals.slice().sort((x,y)=>x-y);
+  const edges=new Array(B-1);
+  for(let b=1;b<B;b++) edges[b-1]=sorted[Math.min(sorted.length-1, Math.floor(b*sorted.length/B))];
+  for(let a=0;a<sel.length;a++){ const i=sel[a]; const v=focusVec[i];
+    if(!isFinite(v)){ bin[i]=-1; continue; }
+    let b=0; while(b<B-1 && v>=edges[b]) b++; bin[i]=b; }
+  return {bin, valid:true};
+}
+
 // ---- association compute ---------------------------------------------------
-function computeCorr(f){
-  // Pearson r of focus gene f vs every gene across the SELECTED cells
-  const sel=getSel(), N=sel.length;
+function computeCorr(){
+  // Pearson r of the focus (gene expression OR cell-variable focusVec) vs every
+  // gene across the SELECTED cells. Cells with a non-finite focus value (e.g. no
+  // layer) are dropped from the correlation.
+  const sel0=getSel();
+  const sel=[]; for(let a=0;a<sel0.length;a++){ const i=sel0[a]; if(isFinite(focusValAt(i))) sel.push(i); }
+  const N=sel.length;
   const r=new Float64Array(N_GENES);
-  let sf=0; for(let a=0;a<N;a++) sf+=expr_matrix[sel[a]*N_GENES+f]; const mf=sf/N;
+  if(N<2) return r;
+  let sf=0; for(let a=0;a<N;a++) sf+=focusValAt(sel[a]); const mf=sf/N;
   const fz=new Float64Array(N); let vf=0;
-  for(let a=0;a<N;a++){ const x=expr_matrix[sel[a]*N_GENES+f]-mf; fz[a]=x; vf+=x*x; }
+  for(let a=0;a<N;a++){ const x=focusValAt(sel[a])-mf; fz[a]=x; vf+=x*x; }
   const sdf=Math.sqrt(vf)||1;
   const sumj=new Float64Array(N_GENES), sumjj=new Float64Array(N_GENES), cross=new Float64Array(N_GENES);
   for(let a=0;a<N;a++){ const base=sel[a]*N_GENES, fza=fz[a];
@@ -781,15 +855,22 @@ function computeCorr(f){
     const sdj=Math.sqrt(vj)||1; r[j]=cross[j]/(sdf*sdj); }
   return r;
 }
-function computeMI(f){
-  const sel=getSel(), N=sel.length;
+function computeMI(){
+  const sel0=getSel();
+  const fb=focusBins(sel0);
+  const fbin=fb.bin;
+  // Selected cells with a valid focus bin.
+  const sel=[]; for(let a=0;a<sel0.length;a++){ const i=sel0[a]; if(fbin[i]>=0) sel.push(i); }
+  const N=sel.length;
   const mi=new Float64Array(N_GENES); const B=MI_BINS;
-  const pf=new Float64Array(B); for(let a=0;a<N;a++) pf[binMat[sel[a]*N_GENES+f]]++;
+  if(N<2 || !fb.valid) return mi;
+  const pf=new Float64Array(B); for(let a=0;a<N;a++) pf[fbin[sel[a]]]++;
   const joint=new Float64Array(B*B);
+  const focIsGene=(focusType==='gene');
   for(let j=0;j<N_GENES;j++){
-    if(!geneActive[j] && j!==f){ mi[j]=0; continue; }
+    if(!geneActive[j] && !(focIsGene && j===focusGene)){ mi[j]=0; continue; }
     joint.fill(0); const pj=new Float64Array(B);
-    for(let a=0;a<N;a++){ const i=sel[a]; const bf=binMat[i*N_GENES+f], bj=binMat[i*N_GENES+j]; joint[bf*B+bj]++; pj[bj]++; }
+    for(let a=0;a<N;a++){ const i=sel[a]; const bf=fbin[i], bj=binMat[i*N_GENES+j]; joint[bf*B+bj]++; pj[bj]++; }
     let m=0;
     for(let a=0;a<B;a++){ if(pf[a]===0) continue;
       for(let b=0;b<B;b++){ const c=joint[a*B+b]; if(c===0||pj[b]===0) continue;
@@ -802,7 +883,7 @@ function onSubsChange(){
   selectedSubs=new Set(); document.querySelectorAll('.ga-sub-cb:checked').forEach(cb=>selectedSubs.add(cb.dataset.sub));
   syncCellActive(); invalidateGeneStruct();
   const e=document.getElementById('ga-sub-count'); if(e) e.textContent=getSel().length.toLocaleString()+' cells included';
-  renderCells(); if(focusGene>=0) computeAssoc();
+  renderCells(); if(focusActive()) computeAssoc();
 }
 // Region / genotype toggle.
 document.querySelectorAll('.rg-btn').forEach(btn=>btn.addEventListener('click',()=>{
@@ -830,32 +911,41 @@ document.querySelectorAll('.ga-bulk').forEach(b=>b.addEventListener('click',()=>
 document.getElementById('ga-sub-all').addEventListener('click',()=>{ document.querySelectorAll('.ga-sub-cb').forEach(cb=>cb.checked=true); onSubsChange(); });
 document.getElementById('ga-sub-none').addEventListener('click',()=>{ document.querySelectorAll('.ga-sub-cb').forEach(cb=>cb.checked=false); onSubsChange(); });
 function computeAssoc(){
-  if(focusGene<0) return;
+  if(!focusActive()) return;
   const gs=document.getElementById('ga-status');
   gs.textContent='computing…';
   setTimeout(()=>{
-    assoc = (metric==='corr') ? computeCorr(focusGene) : computeMI(focusGene);
+    if(focusType!=='gene') buildFocusVec();
+    assoc = (metric==='corr') ? computeCorr() : computeMI();
     paintGenePlotByAssoc();
     renderAssocList();
-    colorByGene(focusGene);     // cells coloured by the focus gene
-    ringGene(focusGene);
+    if(focusType==='gene'){ colorByGene(focusGene); ringGene(focusGene); }   // cells coloured by the focus gene
+    else { colorCellsByFocus(); ringGene(-1); }
     gs.textContent='';
   },20);
 }
+// Recolour the cells by the active cell-variable focus vector. Layer reuses the
+// existing layer colouring (depth viridis + transparent for no-layer cells);
+// pseudotime / %ribo use the generic viridis QC path. focusVec is a plain Array.
+function colorCellsByFocus(){
+  if(focusType==='layer'){ setMode('layer',null); return; }
+  const fmt = focusType==='ribo' ? (v=>v.toFixed(1)+'%') : (v=>v.toFixed(2));
+  colorByQC(focusVec.map(v=>isFinite(v)?v:0), focusLabel(), fmt, null);
+}
 function paintGenePlotByAssoc(){
-  const col=new Array(N_GENES);
+  const col=new Array(N_GENES); const flab=focusLabel();
   if(metric==='corr'){ for(let j=0;j<N_GENES;j++) col[j]=geneActive[j]?divColor(assoc[j]):'#e6e6e6';
-    setColorKeyGradient('correlation to '+gene_name[focusGene],'rdbu',-1,1,v=>v.toFixed(1)); }
+    setColorKeyGradient('correlation to '+flab,'rdbu',-1,1,v=>v.toFixed(1)); }
   else { let hi=1e-9; for(let j=0;j<N_GENES;j++) if(geneActive[j]&&assoc[j]>hi) hi=assoc[j];
     for(let j=0;j<N_GENES;j++){ const t=geneActive[j]?Math.max(0,Math.min(1,assoc[j]/hi)):0;
       col[j]=geneActive[j]?magma[Math.round(255*t)]:'#e6e6e6'; }
-    setColorKeyGradient('mutual info with '+gene_name[focusGene],'magma',0,hi,v=>v.toFixed(2)); }
-  col[focusGene]='#00e5ff';
+    setColorKeyGradient('mutual info with '+flab,'magma',0,hi,v=>v.toFixed(2)); }
+  if(focusType==='gene') col[focusGene]='#00e5ff';
   Plotly.restyle(genePlot,{'marker.color':[col]},[POINTS_TRACE]);
 }
 function renderAssocList(){
   const topN=Math.max(5,Math.min(60,parseInt(document.getElementById('ga-topn').value,10)||20));
-  const cand=[]; for(let j=0;j<N_GENES;j++) if(geneActive[j]&&j!==focusGene) cand.push(j);
+  const cand=[]; for(let j=0;j<N_GENES;j++) if(geneActive[j]&&!(focusType==='gene'&&j===focusGene)) cand.push(j);
   let rows;
   if(metric==='corr'){
     cand.sort((a,b)=>assoc[b]-assoc[a]);
@@ -866,8 +956,12 @@ function renderAssocList(){
   let maxAbs=1e-9; rows.forEach(j=>maxAbs=Math.max(maxAbs,Math.abs(assoc[j])));
   let html='<div class="ga-grid"><div class="ga-h">gene</div><div class="ga-h">'
     +(metric==='corr'?'correlation (red +, blue −)':'mutual information')+'</div><div class="ga-h"></div>';
-  html+='<div class="ga-row" data-gene="'+focusGene+'"><div class="ga-name ga-foc">'+gene_name[focusGene]
-    +' (focus)</div><div></div><div></div></div>';
+  if(focusType==='gene')
+    html+='<div class="ga-row" data-gene="'+focusGene+'"><div class="ga-name ga-foc">'+gene_name[focusGene]
+      +' (focus)</div><div></div><div></div></div>';
+  else
+    html+='<div class="ga-row"><div class="ga-name ga-foc">'+focusLabel()
+      +' (focus)</div><div></div><div></div></div>';
   rows.forEach(j=>{ const v=assoc[j], w=Math.round(100*Math.abs(v)/maxAbs);
     const c=(metric==='corr')?divColor(v):magma[Math.round(255*Math.max(0,Math.min(1,v/maxAbs)))];
     html+='<div class="ga-row" data-gene="'+j+'"><div class="ga-name">'+gene_name[j]
@@ -1065,7 +1159,7 @@ function recomputeSVD(basisIdx, basisLabel) {
   recomputeStatus.innerHTML = '<b>recomputed</b> on ' + m + ' / ' + n_cells_total
     + ' cells, ' + n_panel + ' ' + basisLabel + ' (rank ' + K_emb + ', ' + dt + 's)';
   // Recolour the cells in the new embedding and (if a focus gene is set) re-rank.
-  if (focusGene >= 0) computeAssoc(); else { qcColors = null; setMode('subtype','c-subtype'); }
+  if (focusActive()) computeAssoc(); else { qcColors = null; setMode('subtype','c-subtype'); }
 }
 document.getElementById('recompute-btn').addEventListener('click', () => {
   const btn = document.getElementById('recompute-btn');
@@ -1207,23 +1301,70 @@ gsBtn.addEventListener('click', () => {
 gsColor.addEventListener('click', colorGenesByStruct);
 gsSlider2.addEventListener('input', () => {
   gsThrVal.textContent = parseFloat(gsSlider2.value) > 0 ? (+gsSlider2.value).toFixed(2) : 'off';
-  applyGeneFilter(); if (focusGene >= 0) computeAssoc();
+  applyGeneFilter(); if (focusActive()) computeAssoc();
 });
 
 // ---- focus gene + metric controls ------------------------------------------
 const focusInput=document.getElementById('focus-gene');
+function metricVerb(){ return metric==='corr'?'genes ranked by correlation':'genes ranked by mutual information'; }
+function clearFocusUI(){ focusGene=-1; focusVec=null; assoc=null;
+  document.getElementById('ga-results').innerHTML=''; ringGene(-1);
+  Plotly.restyle(genePlot,{'marker.color':[gene_default_colors]},[POINTS_TRACE]); setMode('subtype','c-subtype'); }
 function setFocus(name){ const j=gene_name.indexOf(name); if(j<0){ status.innerHTML='Gene <b>'+name+'</b> not found.'; return; }
-  focusGene=j; status.innerHTML='Focus gene: <b>'+name+'</b> — '+(metric==='corr'?'genes ranked by correlation.':'genes ranked by mutual information.');
+  focusType='gene'; focusGene=j; status.innerHTML='Focus gene: <b>'+name+'</b> — '+metricVerb()+'.';
   computeAssoc(); }
 focusInput.addEventListener('change',()=>{ const v=focusInput.value.trim(); if(v) setFocus(v); });
-document.getElementById('focus-clear').addEventListener('click',()=>{ focusInput.value=''; focusGene=-1; assoc=null;
-  document.getElementById('ga-results').innerHTML=''; ringGene(-1);
-  Plotly.restyle(genePlot,{'marker.color':[gene_default_colors]},[POINTS_TRACE]); setMode('subtype','c-subtype'); status.innerHTML='Pick a focus gene to begin.'; });
+document.getElementById('focus-clear').addEventListener('click',()=>{ focusInput.value=''; clearFocusUI(); status.innerHTML='Pick a focus gene to begin.'; });
 document.getElementById('metric-corr').addEventListener('click',()=>{ metric='corr';
-  document.getElementById('metric-corr').classList.add('active'); document.getElementById('metric-mi').classList.remove('active'); if(focusGene>=0) computeAssoc(); });
+  document.getElementById('metric-corr').classList.add('active'); document.getElementById('metric-mi').classList.remove('active'); if(focusActive()) computeAssoc(); });
 document.getElementById('metric-mi').addEventListener('click',()=>{ metric='mi';
-  document.getElementById('metric-mi').classList.add('active'); document.getElementById('metric-corr').classList.remove('active'); if(focusGene>=0) computeAssoc(); });
-document.getElementById('ga-topn').addEventListener('change',()=>{ if(focusGene>=0&&assoc) renderAssocList(); });
+  document.getElementById('metric-mi').classList.add('active'); document.getElementById('metric-corr').classList.remove('active'); if(focusActive()) computeAssoc(); });
+document.getElementById('ga-topn').addEventListener('change',()=>{ if(focusActive()&&assoc) renderAssocList(); });
+
+// ---- focus-TYPE selector (Gene | Layer | Pseudotime | %ribo) ---------------
+const FT_BTNS={gene:'ft-gene',layer:'ft-layer',pt:'ft-pt',ribo:'ft-ribo'};
+const geneFocusRow=document.getElementById('ga-genefocus-row');
+const rootControls=document.getElementById('ga-root-controls');
+// Hide the Layer focus option when there is no usable layer info (matches the
+// existing layer colour-button behaviour: cell_layer null / single-valued).
+if(!cell_layer){ const lb=document.getElementById('ft-layer'); if(lb) lb.remove(); }
+function setFocusType(ft){
+  focusType=ft;
+  Object.keys(FT_BTNS).forEach(k=>{ const e=document.getElementById(FT_BTNS[k]); if(e) e.classList.toggle('active',k===ft); });
+  geneFocusRow.style.display = ft==='gene' ? '' : 'none';
+  rootControls.style.display = ft==='pt' ? '' : 'none';
+  if(ft==='gene'){
+    focusVec=null;
+    if(focusGene>=0){ status.innerHTML='Focus gene: <b>'+gene_name[focusGene]+'</b> — '+metricVerb()+'.'; computeAssoc(); }
+    else { clearFocusUI(); status.innerHTML='Pick a focus gene to begin.'; }
+  } else {
+    focusGene=-1;
+    status.innerHTML='Focus: <b>'+focusLabel()+'</b> — '+metricVerb()+'.';
+    computeAssoc();
+  }
+}
+Object.keys(FT_BTNS).forEach(k=>{ const e=document.getElementById(FT_BTNS[k]); if(e) e.addEventListener('click',()=>setFocusType(k)); });
+
+// ---- pick-root-cell (rooted pseudotime) ------------------------------------
+let pickingRoot=false;
+const pickRootBtn=document.getElementById('pick-root');
+const clearRootBtn=document.getElementById('clear-root');
+const rootStatus=document.getElementById('root-status');
+function updateRootStatus(){
+  rootStatus.innerHTML = rootCell>=0 ? 'root: cell #'+rootCell : '';
+  clearRootBtn.style.display = rootCell>=0 ? '' : 'none';
+}
+pickRootBtn.addEventListener('click',()=>{ pickingRoot=!pickingRoot;
+  pickRootBtn.classList.toggle('active',pickingRoot);
+  pickRootBtn.textContent = pickingRoot ? 'click a cell…' : 'Pick root cell'; });
+clearRootBtn.addEventListener('click',()=>{ rootCell=-1; updateRootStatus();
+  if(focusType==='pt'){ status.innerHTML='Focus: <b>'+focusLabel()+'</b> — '+metricVerb()+'.'; computeAssoc(); } });
+cellPlot.on('plotly_click',function(data){ if(!pickingRoot||!data.points||!data.points.length) return;
+  const pt=data.points[0]; if(pt.curveNumber!==POINTS_TRACE) return;
+  rootCell=pt.pointNumber; pickingRoot=false;
+  pickRootBtn.classList.remove('active'); pickRootBtn.textContent='Pick root cell';
+  updateRootStatus();
+  if(focusType==='pt'){ status.innerHTML='Focus: <b>'+focusLabel()+'</b> — '+metricVerb()+'.'; computeAssoc(); } });
 
 // hovering a gene in the right plot sets it as the focus gene
 genePlot.on('plotly_hover',function(data){ if(!data.points||!data.points.length)return;

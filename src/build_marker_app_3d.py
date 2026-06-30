@@ -361,6 +361,18 @@ button {{ font-size: 13px; padding: 4px 10px; }}
                    padding: 6px 10px; margin: 4px 0; font-size: 12px; }}
 .genestruct-box .gs-title {{ font-weight: 700; color: #1f5d8c; margin-right: 6px; }}
 #genestruct-status {{ color: #555; font-size: 12px; }}
+/* lasso selection overlay */
+#lasso-overlay {{ display: none; position: fixed; inset: 0; z-index: 9999;
+                  background: rgba(0,0,0,.45); align-items: center; justify-content: center; }}
+#lasso-panel {{ width: 70vw; height: 70vh; background: #fff; border-radius: 10px;
+                box-shadow: 0 8px 40px rgba(0,0,0,.4); display: flex; flex-direction: column;
+                padding: 10px 14px; }}
+#lasso-head {{ display: flex; align-items: center; justify-content: space-between;
+               margin-bottom: 6px; }}
+#lasso-title {{ font-size: 15px; font-weight: 700; }}
+#lasso-close {{ font-size: 13px; padding: 4px 12px; cursor: pointer; }}
+#lasso-plot {{ flex: 1; min-height: 0; }}
+#lasso-foot {{ font-size: 12px; color: #444; min-height: 18px; padding-top: 4px; }}
 </style>
 </head>
 <body>
@@ -402,6 +414,11 @@ button {{ font-size: 13px; padding: 4px 10px; }}
     <span id="grp-a-summary" class="label" style="color:{GRP_A_COLOR};font-weight:700;"></span>
     <span id="grp-b-summary" class="label" style="color:{GRP_B_COLOR};font-weight:700;"></span>
     <button id="grp-clear">clear both</button>
+  </div>
+  <div class="controls-row" style="gap:10px;">
+    <button id="lasso-a-btn" title="Open a 2D PC1×PC2 view and lasso (draw a loop around) cells to add them to Group A.">Lasso → A</button>
+    <button id="lasso-b-btn" title="Open a 2D PC1×PC2 view and lasso (draw a loop around) cells to add them to Group B.">Lasso → B</button>
+    <button id="lasso-clear" title="Remove all per-cell lasso overrides (subtype-based groups remain).">Clear lasso selection</button>
   </div>
   <div class="controls-row" style="gap:10px;">
     <button id="replot-panel" title="Re-fit the SVD embedding using only the two selected groups (panel HVG genes), so the axes capture what separates A from B.">Replot on these groups (gene panel)</button>
@@ -454,6 +471,17 @@ button {{ font-size: 13px; padding: 4px 10px; }}
 
 <footer class="cite">{base.cohort_citation(GROUP_NAME)}</footer>
 </div>
+
+<div id="lasso-overlay">
+  <div id="lasso-panel">
+    <div id="lasso-head">
+      <span id="lasso-title"></span>
+      <button id="lasso-close" title="Close the lasso overlay.">✕ close</button>
+    </div>
+    <div id="lasso-plot"></div>
+    <div id="lasso-foot"><span id="lasso-status"></span></div>
+  </div>
+</div>
 <script>
 {js_data}
 {base.COLOR_KEY_JS}
@@ -486,6 +514,8 @@ for (let i = 0; i < N_CELLS; i++) {
 // state
 let groupA = new Set(DEFAULT_A);
 let groupB = new Set(DEFAULT_B);
+// per-cell override layered on top of the subtype groups (cellIndex -> 'A'|'B'|'none')
+let cellGroupOverride = new Map();
 let colorMode = 'group';      // group | subtype | counts | genes | ribo | layer | gene
 let activeGene = -1;          // gene index when colorMode === 'gene'
 let geneActive = new Array(N_GENES).fill(false);
@@ -495,6 +525,11 @@ function readVal(i, j){ return expr_matrix[i*N_GENES+j] / EXPR_SCALE; }
 
 // ---- group helpers ---------------------------------------------------------
 function cellGroup(i) {
+  // a lassoed cell override wins over its subtype-based membership
+  if (cellGroupOverride.has(i)) {
+    const o = cellGroupOverride.get(i);
+    return (o === 'A' || o === 'B') ? o : null;
+  }
   const s = cell_subtype[i];
   if (groupA.has(s)) return 'A';
   if (groupB.has(s)) return 'B';
@@ -608,9 +643,17 @@ function syncGroupButtons() {
     const on = (g === 'A' && groupA.has(s)) || (g === 'B' && groupB.has(s));
     b.classList.toggle('on', on);
   });
-  const aN = countCells(groupA), bN = countCells(groupB);
+  // effective cell counts honour the lasso overrides (cellGroup), not just subtype sets
+  let aN = 0, bN = 0;
+  for (let i = 0; i < N_CELLS; i++) { const g = cellGroup(i); if (g === 'A') aN++; else if (g === 'B') bN++; }
+  let lassoNote = '';
+  if (cellGroupOverride.size) {
+    let la = 0, lb = 0;
+    cellGroupOverride.forEach(v => { if (v === 'A') la++; else if (v === 'B') lb++; });
+    lassoNote = ' (incl. ' + la + '→A / ' + lb + '→B lassoed)';
+  }
   document.getElementById('grp-a-summary').textContent = 'A: ' + groupA.size + ' subtypes · ' + aN.toLocaleString() + ' cells';
-  document.getElementById('grp-b-summary').textContent = 'B: ' + groupB.size + ' subtypes · ' + bN.toLocaleString() + ' cells';
+  document.getElementById('grp-b-summary').textContent = 'B: ' + groupB.size + ' subtypes · ' + bN.toLocaleString() + ' cells' + lassoNote;
 }
 function countCells(set) { let n = 0; for (let i = 0; i < N_CELLS; i++) if (set.has(cell_subtype[i])) n++; return n; }
 function assign(sub, grp) {
@@ -639,6 +682,77 @@ document.querySelectorAll('.mk-bulk').forEach(b => b.addEventListener('click', (
 }));
 document.getElementById('grp-clear').addEventListener('click', () => {
   groupA.clear(); groupB.clear(); onGroupsChanged();
+});
+
+// ---- lasso overlay: paint cells into A or B by enclosing them ---------------
+// 3D Plotly has no native lasso, so we open an overlay with a 2D Plotly scatter
+// of the same cells (PC1×PC2 = cell_x × cell_y). Plotly 2D supports lasso
+// reliably. The 2D trace keeps one point per global cell index in order, so a
+// selection's pointNumber maps directly to the global cell index.
+let lassoTarget = 'A';   // which group the lassoed cells get assigned to
+const lassoOverlay = document.getElementById('lasso-overlay');
+const lassoPlotDiv = document.getElementById('lasso-plot');
+const lassoTitle   = document.getElementById('lasso-title');
+const lassoStatus  = document.getElementById('lasso-status');
+
+function lassoCellColors() {
+  const col = new Array(N_CELLS);
+  for (let i = 0; i < N_CELLS; i++) {
+    const g = cellGroup(i);
+    col[i] = g === 'A' ? GRP_A_COLOR : (g === 'B' ? GRP_B_COLOR : 'rgba(150,150,150,0.45)');
+  }
+  return col;
+}
+function openLasso(target) {
+  lassoTarget = target;
+  const tcol = target === 'A' ? GRP_A_COLOR : GRP_B_COLOR;
+  lassoTitle.innerHTML = 'Lasso cells → <b style="color:' + tcol + '">Group ' + target + '</b>'
+    + ' &nbsp;<span style="font-weight:400;color:#666;font-size:12px">'
+    + '(PC1 × PC2; draw a loop around cells to assign them)</span>';
+  lassoStatus.textContent = '';
+  lassoOverlay.style.display = 'flex';
+  const data = [{
+    x: cell_x, y: cell_y, mode: 'markers', type: 'scattergl',
+    marker: { size: 5, color: lassoCellColors(), line: { width: 0 } },
+    hoverinfo: 'skip', showlegend: false
+  }];
+  const layout = {
+    dragmode: 'lasso',
+    margin: { l: 30, r: 10, t: 6, b: 30 },
+    xaxis: { title: 'PC1', zeroline: false },
+    yaxis: { title: 'PC2', zeroline: false },
+    paper_bgcolor: 'white', plot_bgcolor: 'white'
+  };
+  const config = { displayModeBar: true, responsive: true,
+    modeBarButtonsToAdd: ['lasso2d', 'select2d'], displaylogo: false };
+  Plotly.newPlot(lassoPlotDiv, data, layout, config).then(() => {
+    Plotly.Plots.resize(lassoPlotDiv);
+    lassoPlotDiv.on('plotly_selected', function(eventData) {
+      if (!eventData || !eventData.points || !eventData.points.length) return;
+      let n = 0;
+      eventData.points.forEach(pt => {
+        const i = pt.pointNumber;        // == global cell index (1 trace, in order)
+        if (i != null && i >= 0 && i < N_CELLS) { cellGroupOverride.set(i, lassoTarget); n++; }
+      });
+      lassoStatus.textContent = 'Assigned ' + n + ' cell' + (n === 1 ? '' : 's')
+        + ' → Group ' + lassoTarget + '.';
+      // recolour the 2D scatter to reflect the new assignment, then refresh main UI
+      Plotly.restyle(lassoPlotDiv, { 'marker.color': [lassoCellColors()] }, [0]);
+      onGroupsChanged();
+    });
+  });
+}
+function closeLasso() {
+  lassoOverlay.style.display = 'none';
+  try { Plotly.purge(lassoPlotDiv); } catch (e) {}
+}
+document.getElementById('lasso-a-btn').addEventListener('click', () => openLasso('A'));
+document.getElementById('lasso-b-btn').addEventListener('click', () => openLasso('B'));
+document.getElementById('lasso-close').addEventListener('click', closeLasso);
+document.getElementById('lasso-clear').addEventListener('click', () => {
+  if (!cellGroupOverride.size) return;
+  cellGroupOverride.clear();
+  onGroupsChanged();
 });
 
 // ---- colour-scheme buttons -------------------------------------------------
