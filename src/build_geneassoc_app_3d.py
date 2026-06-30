@@ -589,7 +589,7 @@ function layerToDepth(s){
   if (s==='L1')return 1; if(s==='L2/3')return 2.5; if(s==='L4')return 4; if(s==='L5')return 5; if(s==='L6')return 6; if(s==='L6B')return 6.5;
   return NaN;
 }
-const GREY_NO_LAYER='rgba(170,170,170,0.18)';
+const GREY_NO_LAYER='rgba(0,0,0,0)';
 
 let qcLabel = '';           // label for the active QC color-by, shown in the title
 function refreshTitles(){
@@ -1120,7 +1120,7 @@ function colorBySimilarCells() {
       for (let k=0;k<K;k++) { const t=sc[base+k]-sc[ia+k]; d2+=t*t; }
       acc+=Math.exp(-d2*inv2h2); }
     dens[cellSel[ii]]=acc*scale; }
-  colorByQC(dens, 'similar cells (PCA K='+K+', '+nb+' genes)', v => Math.round(v).toLocaleString(), 'qc-density');
+  colorByQC(Array.from(dens), 'similar cells (PCA K='+K+', '+nb+' genes)', v => Math.round(v).toLocaleString(), 'qc-density');
 }
 
 // ---- Gene-structure (recoverability R^2) ----------------------------------

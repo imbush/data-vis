@@ -526,7 +526,7 @@ function layerToDepth(s) {
   if (s === 'L5') return 5.0; if (s === 'L6') return 6.0; if (s === 'L6B') return 6.5;
   return NaN;
 }
-const GREY_NO_LAYER = 'rgba(170,170,170,0.12)';
+const GREY_NO_LAYER = 'rgba(0,0,0,0)';
 
 // ---- titles ----------------------------------------------------------------
 let titleGeneRef = 'strongest PC';

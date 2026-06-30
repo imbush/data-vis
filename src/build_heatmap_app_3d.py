@@ -560,7 +560,7 @@ h2 {{ margin: 0 0 2px 0; }}
 .row {{ display: flex; flex-direction: row; gap: 8px; min-height: 0; }}
 .col {{ flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }}
 .col > .plotly-graph-div {{ flex: 1 1 auto; min-height: 0; height: 100% !important; }}
-.heatmap-row {{ flex: 1 1 0; min-height: 150px; display: flex; flex-direction: column;
+.heatmap-row {{ flex: 1 1 0; min-height: 380px; display: flex; flex-direction: column;
                 background: #fafafa; border: 1px solid #e0e0e0; border-radius: 3px;
                 padding: 4px 6px; }}
 .heatmap-caption {{ font-size: 11px; color: #555; line-height: 1.2;
@@ -582,7 +582,7 @@ h2 {{ margin: 0 0 2px 0; }}
                      border-bottom: 1px solid #c0c0c0; background: #ffffff; }}
 #line-canvas {{ position: absolute; left: 0; top: 0;
                  width: 100%; height: 100%; }}
-.heatmap-canvas-wrap {{ flex: 1 1 auto; min-height: 0; position: relative; }}
+.heatmap-canvas-wrap {{ flex: 1 1 auto; min-height: 160px; position: relative; }}
 #heatmap-canvas {{ position: absolute; left: 0; top: 0;
                     width: 100%; height: 100%;
                     image-rendering: -moz-crisp-edges;
@@ -1162,7 +1162,7 @@ function colorBySimilarCells() {{
       for (let k=0;k<K;k++) {{ const t=sc[base+k]-sc[ia+k]; d2+=t*t; }}
       acc+=Math.exp(-d2*inv2h2); }}
     dens[cellSel[ii]]=acc*scale; }}
-  colorByQC(dens, 'similar cells (PCA K='+K+', '+nb+' genes)', v => Math.round(v).toLocaleString());
+  colorByQC(Array.from(dens), 'similar cells (PCA K='+K+', '+nb+' genes)', v => Math.round(v).toLocaleString());
 }}
 document.getElementById('qc-density').addEventListener('click', () => {{
   const b=document.getElementById('qc-density'); b.disabled=true; status.innerHTML='computing density&hellip;';
@@ -1260,7 +1260,7 @@ function layerLabel(d) {{
 // Layer of Microdissection: always visible. Cells without dissection info
 // render in low-alpha grey instead of being hidden or miscoloured.
 const layerBtn = document.getElementById('qc-layer');
-const GREY_NO_LAYER = 'rgba(170,170,170,0.12)';
+const GREY_NO_LAYER = 'rgba(0,0,0,0)';
 if (layerBtn) {{
   const _layers = (typeof cell_layer !== 'undefined' && cell_layer) ? cell_layer : null;
   const hasAnyLayer = _layers && new Set(_layers.filter(v => v != null)).size >= 1;

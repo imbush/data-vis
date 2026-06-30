@@ -471,6 +471,10 @@ h2 {{ margin: 0 0 2px 0; }}
             border-radius: 3px; cursor: pointer; }}
 .set-btn:hover {{ background: #eee; }}
 .set-btn.active {{ background: #1f77b4; color: white; border-color: #1f77b4; }}
+.genestruct-box {{ display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+                   border: 1px solid #cdd6e0; background: #f4f8fc; border-radius: 6px;
+                   padding: 6px 10px; margin: 4px 0; font-size: 12px; }}
+.genestruct-box .gs-title {{ font-weight: 700; color: #1f5d8c; margin-right: 6px; }}
 .region-toggle {{ display: inline-flex; align-items: center; gap: 4px;
                     padding-right: 8px; margin-right: 6px;
                     border-right: 1px dashed #d0a060; }}
@@ -626,6 +630,7 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
     <button id="qc-counts" class="qc-btn">Counts</button>
     <button id="qc-genes" class="qc-btn">Genes</button>
     <button id="qc-ribo" class="qc-btn">% ribo</button>
+    <button id="qc-density" class="qc-btn" title="Number of similar cells: local density of each cell in the CURRENT gene space (the genes shown in the biplot). Genes are first reduced to a K-dim PCA latent so neighbour counts stay meaningful despite the curse of dimensionality, then each cell gets a Gaussian-kernel effective count of nearby cells (median-heuristic bandwidth, anchor-subsampled). Recompute-aware.">&asymp; similar cells</button>
     <button id="qc-pt" class="qc-btn">Pseudotime</button>
     <button id="qc-region" class="qc-btn" title="Colour each cell by its dissected region (V1 = orange, ALM = purple). Greyed out for single-region cohorts.">Region</button>
     <button id="qc-age" class="qc-btn" title="Colour each cell by its developmental stage (E11.5 → P56). Greyed out for cohorts without age info.">Age</button>
@@ -682,16 +687,17 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
     <span class="label" style="margin-left:14px;">Visible:</span>
     <span id="visible-count">{n_panel_disp} / {n_genes}</span>
   </div>
-  <div class="controls-row" title="Embed the selected cells into a K-dim PCA latent space, then score each gene by how much of its variance is recoverable from that embedding (reconstruction R^2). High = the gene's expression tracks the shared cell-state structure of the selected cells; low = private/independent variation.">
-    <span class="label">Gene structure:</span>
-    <button id="genestruct-btn">Score genes by recoverability</button>
+  <div class="genestruct-box" title="Embed the selected cells into a K-dim PCA latent space, then score each gene by how much of its variance is recoverable from that embedding (reconstruction R^2). High = the gene's expression tracks the shared cell-state structure of the selected cells; low = private/independent variation. Uses the same expression the embedding sees (incl. 'Regress out %ribo' if checked).">
+    <span class="gs-title">Gene structure (recoverability)</span>
+    <button id="genestruct-btn" class="qc-btn">Score genes</button>
+    <button id="genestruct-color" class="qc-btn" disabled>Colour by recoverability</button>
     <span class="label" style="margin-left:8px;">latent dims K:</span>
-    <input id="genestruct-k" type="range" min="2" max="100" step="1" value="30" style="width:120px; vertical-align:middle;">
+    <input id="genestruct-k" type="range" min="2" max="100" step="1" value="30" style="width:110px; vertical-align:middle;">
     <span id="genestruct-k-val" style="color:#1f77b4; font-weight:600;">30</span>
-    <span class="label" style="margin-left:14px;">Min recoverability R²:</span>
-    <input id="genestruct-slider" type="range" min="0" max="1" step="0.01" value="0" style="width:120px; vertical-align:middle;" disabled>
+    <span class="label" style="margin-left:10px;">Min recoverability R²:</span>
+    <input id="genestruct-slider" type="range" min="0" max="1" step="0.01" value="0" style="width:110px; vertical-align:middle;" disabled>
     <span id="genestruct-thr-val">off</span>
-    <span id="genestruct-status" style="color:#555; margin-left:10px;"></span>
+    <span id="genestruct-status" style="color:#555; margin-left:8px;"></span>
   </div>
 </div>
 
@@ -957,6 +963,7 @@ document.getElementById('search-clear').addEventListener('click', function() {{
 //   R^2_j = sum_k (u_k . z_j)^2 / ||z_j||^2   (u_k = orthonormal cell-space PCs,
 //   z_j = gene j z-scored over the selected cells). Computed entirely client-side.
 const gsBtn      = document.getElementById('genestruct-btn');
+const gsColor    = document.getElementById('genestruct-color');
 const gsK        = document.getElementById('genestruct-k');
 const gsKval     = document.getElementById('genestruct-k-val');
 const gsSlider2  = document.getElementById('genestruct-slider');
@@ -967,8 +974,9 @@ gsK.addEventListener('input', () => {{ gsKval.textContent = gsK.value; }});
 function invalidateGeneStruct() {{
   if (!gene_struct) return;
   gene_struct = null;
-  gsSlider2.value = 0; gsSlider2.disabled = true; gsThrVal.textContent = 'off';
+  gsSlider2.disabled = true; gsColor.disabled = true;
   gsStatus.innerHTML = '<span style="color:#999">cell selection changed — rescore</span>';
+  applyGeneFilter();   // drop the (now-inactive) recoverability filter from the view
 }}
 
 function computeGeneStructure() {{
@@ -1023,9 +1031,12 @@ function computeGeneStructure() {{
     r2[j] = Math.max(0, Math.min(1, energy / (varj * m)));
   }}
   gene_struct = r2;
-  // enable the filter slider, colour genes, report the top hits
-  gsSlider2.disabled = false; gsSlider2.value = 0; gsThrVal.textContent = 'off';
+  // enable controls; KEEP the current threshold and apply it immediately so the
+  // genes shown always match the recoverability filter, then colour by R².
+  gsSlider2.disabled = false; gsColor.disabled = false;
+  gsThrVal.textContent = parseFloat(gsSlider2.value) > 0 ? (+gsSlider2.value).toFixed(2) : 'off';
   colorGenesByStruct();
+  applyGeneFilter();
   const order = Array.from(r2.keys()).sort((a,b) => r2[b] - r2[a]);
   const top = order.slice(0, 8).map(j => gene_name[j] + ' (' + r2[j].toFixed(2) + ')');
   const panelMean = panel_idx.reduce((a,j)=>a+r2[j],0)/np;
@@ -1044,6 +1055,7 @@ gsBtn.addEventListener('click', () => {{
   gsBtn.disabled = true; gsStatus.textContent = 'scoring…';
   setTimeout(() => {{ try {{ computeGeneStructure(); }} finally {{ gsBtn.disabled = false; }} }}, 30);
 }});
+gsColor.addEventListener('click', colorGenesByStruct);
 gsSlider2.addEventListener('input', () => {{
   gsThrVal.textContent = parseFloat(gsSlider2.value) > 0 ? (+gsSlider2.value).toFixed(2) : 'off';
   applyGeneFilter();
@@ -1072,6 +1084,63 @@ const fmtPct = v => v.toFixed(1) + '%';
 document.getElementById('qc-counts').addEventListener('click', () => colorByQC(qc_total, 'total counts', fmtInt));
 document.getElementById('qc-genes').addEventListener('click', () => colorByQC(qc_ngenes, 'genes detected', fmtInt));
 document.getElementById('qc-ribo').addEventListener('click', () => colorByQC(qc_ribo, '% ribosomal', fmtPct));
+
+// ---- "Number of similar cells": local density in the CURRENT gene space -----
+// Reduce the currently-shown genes to a K-dim PCA latent (curse-of-dimensionality
+// fix: raw distances over 100s of genes concentrate and stop discriminating),
+// then each cell's value = Gaussian-kernel effective neighbour count in that
+// latent (median-heuristic bandwidth, anchor-subsampled). Recomputed on click so
+// it always reflects the current gene filter / embedding.
+function colorBySimilarCells() {{
+  const cellSel = [];
+  for (let i = 0; i < cell_active.length; i++) if (cell_active[i]) cellSel.push(i);
+  const m = cellSel.length;
+  if (m < 10) {{ status.innerHTML = '<span style="color:#c00">need &ge;10 cells</span>'; return; }}
+  let basis = (typeof visibleGeneIdx === 'function') ? visibleGeneIdx()
+            : (typeof shownGeneIdx === 'function') ? shownGeneIdx() : panel_idx.slice();
+  if (!basis || basis.length < 3) basis = panel_idx.slice();
+  if (basis.length > 600) basis = basis.slice().sort((a,b) => gene_std[b]-gene_std[a]).slice(0,600);
+  const nb = basis.length;
+  const K = Math.max(2, Math.min(25, nb-1, m-1));
+  // Zp: m x nb, z-scored on the selected cells.
+  const Zp = new Array(m); for (let i=0;i<m;i++) Zp[i] = new Float64Array(nb);
+  for (let k=0;k<nb;k++) {{ const j=basis[k]; let s=0, ss=0;
+    for (let ii=0;ii<m;ii++) {{ const v=readVal(cellSel[ii], j); Zp[ii][k]=v; s+=v; ss+=v*v; }}
+    const mean=s/m, sd=Math.sqrt(Math.max(ss/m-mean*mean,1e-18));
+    for (let ii=0;ii<m;ii++) Zp[ii][k]=(Zp[ii][k]-mean)/sd; }}
+  // Covariance C = Zp^T Zp (nb x nb), top-K eigenvectors (cheap when nb small).
+  const C=new Array(nb);
+  for (let a=0;a<nb;a++) {{ const Ca=new Float64Array(nb);
+    for (let ii=0;ii<m;ii++) {{ const za=Zp[ii][a]; if (za===0) continue; const Zi=Zp[ii];
+      for (let b=a;b<nb;b++) Ca[b]+=za*Zi[b]; }} C[a]=Ca; }}
+  for (let a=0;a<nb;a++) for (let b=a+1;b<nb;b++) C[b][a]=C[a][b];
+  const pk = powerIterTopK(C, K, 60); const Vc = pk.U;
+  // Cell PCA scores sc (m x K, row-major): sc_ik = Zp_i . Vc_k.
+  const sc=new Float64Array(m*K);
+  for (let k=0;k<K;k++) {{ const vk=Vc[k];
+    for (let ii=0;ii<m;ii++) {{ let acc=0; const Zi=Zp[ii];
+      for (let a=0;a<nb;a++) acc+=Zi[a]*vk[a]; sc[ii*K+k]=acc; }} }}
+  // Anchor subsample (stride) -> O(m.A.K) density.
+  const A=Math.min(m,1200), step=m/A; const anc=new Int32Array(A);
+  for (let a=0;a<A;a++) anc[a]=Math.floor(a*step);
+  // Bandwidth h^2 = median squared distance among up to 400 anchors (median heuristic).
+  const Bn=Math.min(A,400); const dd=[];
+  for (let a=0;a<Bn;a++) for (let b=a+1;b<Bn;b++) {{ const ia=anc[a]*K, ib=anc[b]*K; let d2=0;
+    for (let k=0;k<K;k++) {{ const t=sc[ia+k]-sc[ib+k]; d2+=t*t; }} dd.push(d2); }}
+  dd.sort((x,y)=>x-y);
+  const h2=Math.max(dd.length?dd[dd.length>>1]:1, 1e-12), inv2h2=1/(2*h2), scale=m/A;
+  const dens=new Float64Array(cell_subtype.length);
+  for (let ii=0;ii<m;ii++) {{ const base=ii*K; let acc=0;
+    for (let a=0;a<A;a++) {{ const ia=anc[a]*K; let d2=0;
+      for (let k=0;k<K;k++) {{ const t=sc[base+k]-sc[ia+k]; d2+=t*t; }}
+      acc+=Math.exp(-d2*inv2h2); }}
+    dens[cellSel[ii]]=acc*scale; }}
+  colorByQC(Array.from(dens), 'similar cells (PCA K='+K+', '+nb+' genes)', v => Math.round(v).toLocaleString());
+}}
+document.getElementById('qc-density').addEventListener('click', () => {{
+  const b=document.getElementById('qc-density'); b.disabled=true; status.innerHTML='computing density&hellip;';
+  setTimeout(() => {{ try {{ colorBySimilarCells(); }} finally {{ b.disabled=false; }} }}, 30);
+}});
 document.getElementById('qc-pt').addEventListener('click', () => {{
   // Pseudotime colour = PC1 (cell_score[:,0]) ascending → viridis on active cells.
   const arr = cell_score.map(s => s[0]);
@@ -1164,7 +1233,7 @@ function layerLabel(d) {{
 // Layer of Microdissection: always visible. Cells without dissection info
 // render in low-alpha grey instead of being hidden or miscoloured.
 const layerBtn = document.getElementById('qc-layer');
-const GREY_NO_LAYER = 'rgba(170,170,170,0.12)';
+const GREY_NO_LAYER = 'rgba(0,0,0,0)';
 if (layerBtn) {{
   const _layers = (typeof cell_layer !== 'undefined' && cell_layer) ? cell_layer : null;
   const hasAnyLayer = _layers && new Set(_layers.filter(v => v != null)).size >= 1;

@@ -949,7 +949,7 @@ function layerLabel(d) {
 // Layer of Microdissection: always visible. Cells without dissection info
 // render in low-alpha grey instead of being hidden or miscoloured.
 const layerBtn = document.getElementById('qc-layer');
-const GREY_NO_LAYER = 'rgba(170,170,170,0.12)';
+const GREY_NO_LAYER = 'rgba(0,0,0,0)';
 if (layerBtn) {
   const _layers = (typeof cell_layer !== 'undefined' && cell_layer) ? cell_layer : null;
   const hasAnyLayer = _layers && new Set(_layers.filter(v => v != null)).size >= 1;

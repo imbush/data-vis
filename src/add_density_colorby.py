@@ -83,7 +83,7 @@ function colorBySimilarCells() {
       for (let k=0;k<K;k++) { const t=sc[base+k]-sc[ia+k]; d2+=t*t; }
       acc+=Math.exp(-d2*inv2h2); }
     dens[cellSel[ii]]=acc*scale; }
-  colorByQC(dens, 'similar cells (PCA K='+K+', '+nb+' genes)', v => Math.round(v).toLocaleString());
+  colorByQC(Array.from(dens), 'similar cells (PCA K='+K+', '+nb+' genes)', v => Math.round(v).toLocaleString());
 }
 document.getElementById('qc-density').addEventListener('click', () => {
   const b=document.getElementById('qc-density'); b.disabled=true; status.innerHTML='computing density&hellip;';
