@@ -706,6 +706,7 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
     <span class="gs-title">Gene structure (recoverability)</span>
     <button id="genestruct-btn" class="qc-btn">Score genes</button>
     <button id="genestruct-color" class="qc-btn" disabled>Colour by recoverability</button>
+    <button id="genestruct-density" class="qc-btn" title="Number of similar genes: local density of each shown gene among the OTHER shown genes in the gene-embedding (loading) space. Each gene gets a Gaussian-kernel effective neighbour count (median-heuristic bandwidth). Reflects the current gene filter / embedding.">&asymp; similar genes</button>
     <span class="label" style="margin-left:8px;">latent dims K:</span>
     <input id="genestruct-k" type="range" min="2" max="100" step="1" value="30" style="width:110px; vertical-align:middle;">
     <span id="genestruct-k-val" style="color:#1f77b4; font-weight:600;">30</span>
@@ -1125,6 +1126,55 @@ gsBtn.addEventListener('click', () => {{
   setTimeout(() => {{ try {{ computeGeneStructure(); }} finally {{ gsBtn.disabled = false; }} }}, 30);
 }});
 gsColor.addEventListener('click', colorGenesByStruct);
+
+// ---- "Number of similar genes": local density in the gene-embedding space ----
+// Gene analogue of "similar cells". Each SHOWN gene gets a Gaussian-kernel
+// effective neighbour count among the OTHER shown genes, using the current 3D
+// gene biplot coords (gene_x/gene_y/gene_z). Bandwidth h^2 = median squared
+// pairwise distance among up to ~400 shown genes (median heuristic). Colours are
+// built as a PLAIN Array (typed arrays coerce colour strings to NaN).
+function colorBySimilarGenes() {{
+  let shown = (typeof visibleGeneIdx === 'function') ? visibleGeneIdx()
+            : (typeof shownGeneIdx === 'function') ? shownGeneIdx() : null;
+  if (!shown || shown.length < 2) shown = Array.from(gene_name.keys());
+  const G = shown.length;
+  const inShown = new Uint8Array(gene_name.length);
+  for (let i = 0; i < G; i++) inShown[shown[i]] = 1;
+  // Anchors: subsample shown genes when many (median-heuristic + density sums).
+  const A = Math.min(G, 1200), step = G / A; const anc = new Int32Array(A);
+  for (let a = 0; a < A; a++) anc[a] = shown[Math.floor(a * step)];
+  // Bandwidth h^2 = median squared distance among up to 400 anchors.
+  const Bn = Math.min(A, 400); const dd = [];
+  for (let a = 0; a < Bn; a++) {{ const ga = anc[a];
+    for (let b = a + 1; b < Bn; b++) {{ const gb = anc[b];
+      const dx = gene_x[ga] - gene_x[gb], dy = gene_y[ga] - gene_y[gb], dz = gene_z[ga] - gene_z[gb];
+      dd.push(dx*dx + dy*dy + dz*dz); }} }}
+  dd.sort((x, y) => x - y);
+  const h2 = Math.max(dd.length ? dd[dd.length >> 1] : 1, 1e-12), inv2h2 = 1 / (2 * h2), scale = G / A;
+  // density[g] = scale * sum over anchors exp(-d^2 / (2 h^2)) for shown genes.
+  const dens = new Float64Array(gene_name.length);
+  for (let i = 0; i < G; i++) {{ const g = shown[i]; let acc = 0;
+    const gx = gene_x[g], gy = gene_y[g], gz = gene_z[g];
+    for (let a = 0; a < A; a++) {{ const ga = anc[a];
+      const dx = gx - gene_x[ga], dy = gy - gene_y[ga], dz = gz - gene_z[ga];
+      acc += Math.exp(-(dx*dx + dy*dy + dz*dz) * inv2h2); }}
+    dens[g] = acc * scale; }}
+  // Map shown-gene densities to viridis (plain Array), grey the rest.
+  const vals = []; for (let i = 0; i < G; i++) vals.push(dens[shown[i]]);
+  const palette = valuesToViridis(vals);
+  let vi = 0;
+  const colors = [];
+  for (let j = 0; j < gene_name.length; j++) colors.push(inShown[j] ? palette[vi++] : '#e6e6e6');
+  Plotly.restyle(genePlot, {{'marker.color': [colors]}}, [POINTS_TRACE]);
+  let lo = Infinity, hi = -Infinity;
+  for (const v of vals) {{ if (v < lo) lo = v; if (v > hi) hi = v; }}
+  setColorKeyGradient('similar genes (' + G + ' shown)', 'viridis', lo, hi, v => v.toFixed(1));
+}}
+document.getElementById('genestruct-density').addEventListener('click', () => {{
+  const b = document.getElementById('genestruct-density'); b.disabled = true;
+  if (typeof gsStatus !== 'undefined' && gsStatus) gsStatus.textContent = 'computing density…';
+  setTimeout(() => {{ try {{ colorBySimilarGenes(); }} finally {{ b.disabled = false; }} }}, 30);
+}});
 gsSlider2.addEventListener('input', () => {{
   gsThrVal.textContent = parseFloat(gsSlider2.value) > 0 ? (+gsSlider2.value).toFixed(2) : 'off';
   applyGeneFilter();
