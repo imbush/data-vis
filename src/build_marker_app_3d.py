@@ -77,6 +77,22 @@ def main():
     gene_load3 = (Zall.T @ U) / S
     print(f'  marker explorer: SVD on {Xp.shape[0]} cells × {int(in_panel.sum())} panel genes')
 
+    # ---- 2D UMAP of the cohort cells (cleaner DR for the lasso overlay) -----
+    # Computed from the same standardized panel-HVG matrix the SVD uses (Zp),
+    # so the lasso overlay shows a proper non-linear embedding rather than the
+    # linear PC1×PC2 plane. Cell-index aligned with X_keep / subs / cell_xyz.
+    import anndata as _ad
+    import scanpy as sc
+    _adata = _ad.AnnData(np.asarray(Zp, dtype=np.float32))
+    sc.pp.pca(_adata, n_comps=min(30, Zp.shape[1] - 1, Zp.shape[0] - 1))
+    sc.pp.neighbors(_adata, random_state=0)
+    sc.tl.umap(_adata, random_state=0)
+    _umap = np.asarray(_adata.obsm['X_umap'], dtype=np.float64)
+    umap_x = np.round(_umap[:, 0], 4).tolist()
+    umap_y = np.round(_umap[:, 1], 4).tolist()
+    print(f'  UMAP computed: 2D UMAP on {Zp.shape[0]} cells × {Zp.shape[1]} panel HVGs '
+          f'(PCA n_comps={min(30, Zp.shape[1] - 1, Zp.shape[0] - 1)})')
+
     def fill_cube(M, robust=False):
         # robust: normalise by the 99.5th percentile of |score| per axis (not the
         # max) so a handful of outlier subtypes don't compress the main cloud,
@@ -290,6 +306,8 @@ def main():
         f"const cell_x = {json.dumps(cx)};\n"
         f"const cell_y = {json.dumps(cy)};\n"
         f"const cell_z = {json.dumps(cz)};\n"
+        f"const umap_x = {json.dumps(umap_x)};\n"
+        f"const umap_y = {json.dumps(umap_y)};\n"
         f"const gene_mean = {json.dumps([round(float(v),4) for v in mean_expr])};\n"
         f"const gene_std = {json.dumps([round(float(v),4) for v in std_expr])};\n"
         f"const gene_default_colors = {json.dumps(gene_color_default)};\n"
@@ -409,22 +427,28 @@ button {{ font-size: 13px; padding: 4px 10px; }}
 </div>
 
 <div class="ctrl-box">
-  <div class="ctrl-box-title">Pick the Two Populations to Compare</div>
+  <div class="ctrl-box-title">Pick the Two Populations to Compare (by Cell Type)</div>
   <div class="controls-row" style="gap:14px;">
     <span id="grp-a-summary" class="label" style="color:{GRP_A_COLOR};font-weight:700;"></span>
     <span id="grp-b-summary" class="label" style="color:{GRP_B_COLOR};font-weight:700;"></span>
     <button id="grp-clear">clear both</button>
   </div>
   <div class="controls-row" style="gap:10px;">
-    <button id="lasso-a-btn" title="Open a 2D PC1×PC2 view and lasso (draw a loop around) cells to add them to Group A.">Lasso → A</button>
-    <button id="lasso-b-btn" title="Open a 2D PC1×PC2 view and lasso (draw a loop around) cells to add them to Group B.">Lasso → B</button>
-    <button id="lasso-clear" title="Remove all per-cell lasso overrides (subtype-based groups remain).">Clear lasso selection</button>
-  </div>
-  <div class="controls-row" style="gap:10px;">
     <button id="replot-panel" title="Re-fit the SVD embedding using only the two selected groups (panel HVG genes), so the axes capture what separates A from B.">Replot on these groups (gene panel)</button>
     <button id="replot-all" title="Re-fit the SVD embedding on the two groups using every gene currently shown in the gene filter.">Replot (shown genes)</button>
   </div>
   <div class="controls-row" style="display:block;">{group_selector_html}</div>
+</div>
+
+<div class="ctrl-box">
+  <div class="ctrl-box-title">Pick the Two Populations to Compare (by lasso on umap)</div>
+  <div class="hint" style="margin-bottom:6px;">Opens a 2D UMAP of the currently-selected cell types (those assigned to Group A or B); draw a loop around cells to reassign them. Lasso overrides layer on top of the subtype-based groups.</div>
+  <div class="controls-row" style="gap:10px;">
+    <button id="lasso-a-btn" title="Open a 2D UMAP of the selected cell types and lasso (draw a loop around) cells to add them to Group A.">Lasso → A</button>
+    <button id="lasso-b-btn" title="Open a 2D UMAP of the selected cell types and lasso (draw a loop around) cells to add them to Group B.">Lasso → B</button>
+    <button id="lasso-clear" title="Remove all per-cell lasso overrides (subtype-based groups remain).">Clear lasso selection</button>
+    <span id="lasso-box-status" class="label" style="margin-left:8px; color:#666;"></span>
+  </div>
 </div>
 
 <div class="ctrl-box">
@@ -686,41 +710,60 @@ document.getElementById('grp-clear').addEventListener('click', () => {
 
 // ---- lasso overlay: paint cells into A or B by enclosing them ---------------
 // 3D Plotly has no native lasso, so we open an overlay with a 2D Plotly scatter
-// of the same cells (PC1×PC2 = cell_x × cell_y). Plotly 2D supports lasso
-// reliably. The 2D trace keeps one point per global cell index in order, so a
-// selection's pointNumber maps directly to the global cell index.
+// of a SUBSET of the cells — only the currently-selected cell types (those whose
+// subtype is assigned to Group A or B, i.e. cellActiveAt) — laid out on the 2D
+// UMAP (umap_x × umap_y) computed at build time. Plotly 2D supports lasso
+// reliably. Because the scatter is a subset, one trace holds the selected cells
+// in order and `lassoIdxMap[k]` = the global cell index of the k-th plotted
+// point; a selection's pointNumber must be mapped back through lassoIdxMap.
 let lassoTarget = 'A';   // which group the lassoed cells get assigned to
+let lassoIdxMap = [];    // plotted-point-order → global cell index
 const lassoOverlay = document.getElementById('lasso-overlay');
 const lassoPlotDiv = document.getElementById('lasso-plot');
 const lassoTitle   = document.getElementById('lasso-title');
 const lassoStatus  = document.getElementById('lasso-status');
+const lassoBoxStatus = document.getElementById('lasso-box-status');
 
-function lassoCellColors() {
-  const col = new Array(N_CELLS);
-  for (let i = 0; i < N_CELLS; i++) {
-    const g = cellGroup(i);
-    col[i] = g === 'A' ? GRP_A_COLOR : (g === 'B' ? GRP_B_COLOR : 'rgba(150,150,150,0.45)');
+// colours for the subset scatter, in lassoIdxMap order (by current group A/B/none)
+function lassoSubsetColors() {
+  const col = new Array(lassoIdxMap.length);
+  for (let k = 0; k < lassoIdxMap.length; k++) {
+    const g = cellGroup(lassoIdxMap[k]);
+    col[k] = g === 'A' ? GRP_A_COLOR : (g === 'B' ? GRP_B_COLOR : 'rgba(150,150,150,0.45)');
   }
   return col;
 }
 function openLasso(target) {
   lassoTarget = target;
+  // rebuild the subset (selection may have changed since last open): include
+  // only cells of the currently-selected cell types (assigned to a group).
+  lassoIdxMap = [];
+  for (let i = 0; i < N_CELLS; i++) if (cellActiveAt(i)) lassoIdxMap.push(i);
+  if (!lassoIdxMap.length) {
+    if (lassoBoxStatus) lassoBoxStatus.textContent =
+      'No cell types selected — assign subtypes to Group A or B first.';
+    return;
+  }
+  if (lassoBoxStatus) lassoBoxStatus.textContent = '';
   const tcol = target === 'A' ? GRP_A_COLOR : GRP_B_COLOR;
   lassoTitle.innerHTML = 'Lasso cells → <b style="color:' + tcol + '">Group ' + target + '</b>'
     + ' &nbsp;<span style="font-weight:400;color:#666;font-size:12px">'
-    + '(PC1 × PC2; draw a loop around cells to assign them)</span>';
+    + '(UMAP of the ' + lassoIdxMap.length.toLocaleString()
+    + ' selected cells; draw a loop around cells to assign them)</span>';
   lassoStatus.textContent = '';
   lassoOverlay.style.display = 'flex';
+  const sx = new Array(lassoIdxMap.length), sy = new Array(lassoIdxMap.length);
+  for (let k = 0; k < lassoIdxMap.length; k++) { const i = lassoIdxMap[k]; sx[k] = umap_x[i]; sy[k] = umap_y[i]; }
   const data = [{
-    x: cell_x, y: cell_y, mode: 'markers', type: 'scattergl',
-    marker: { size: 5, color: lassoCellColors(), line: { width: 0 } },
+    x: sx, y: sy, mode: 'markers', type: 'scattergl',
+    marker: { size: 5, color: lassoSubsetColors(), line: { width: 0 } },
     hoverinfo: 'skip', showlegend: false
   }];
   const layout = {
     dragmode: 'lasso',
     margin: { l: 30, r: 10, t: 6, b: 30 },
-    xaxis: { title: 'PC1', zeroline: false },
-    yaxis: { title: 'PC2', zeroline: false },
+    xaxis: { title: 'UMAP1', zeroline: false },
+    yaxis: { title: 'UMAP2', zeroline: false },
     paper_bgcolor: 'white', plot_bgcolor: 'white'
   };
   const config = { displayModeBar: true, responsive: true,
@@ -731,13 +774,15 @@ function openLasso(target) {
       if (!eventData || !eventData.points || !eventData.points.length) return;
       let n = 0;
       eventData.points.forEach(pt => {
-        const i = pt.pointNumber;        // == global cell index (1 trace, in order)
+        const k = pt.pointNumber;        // index into the SUBSET, not the global cell index
+        if (k == null || k < 0 || k >= lassoIdxMap.length) return;
+        const i = lassoIdxMap[k];        // → global cell index
         if (i != null && i >= 0 && i < N_CELLS) { cellGroupOverride.set(i, lassoTarget); n++; }
       });
       lassoStatus.textContent = 'Assigned ' + n + ' cell' + (n === 1 ? '' : 's')
         + ' → Group ' + lassoTarget + '.';
       // recolour the 2D scatter to reflect the new assignment, then refresh main UI
-      Plotly.restyle(lassoPlotDiv, { 'marker.color': [lassoCellColors()] }, [0]);
+      Plotly.restyle(lassoPlotDiv, { 'marker.color': [lassoSubsetColors()] }, [0]);
       onGroupsChanged();
     });
   });

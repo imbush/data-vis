@@ -649,7 +649,7 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
     <button id="qc-counts" class="qc-btn">Counts</button>
     <button id="qc-genes" class="qc-btn">Genes</button>
     <button id="qc-ribo" class="qc-btn">% ribo</button>
-    <button id="qc-density" class="qc-btn" title="Number of similar cells: local density of each cell in the CURRENT gene space (the genes shown in the biplot). Genes are first reduced to a K-dim PCA latent so neighbour counts stay meaningful despite the curse of dimensionality, then each cell gets a Gaussian-kernel effective count of nearby cells (median-heuristic bandwidth, anchor-subsampled). Recompute-aware.">&asymp; similar cells</button>
+    <button id="qc-density" class="qc-btn" title="Colour BOTH plots by local density: cells by number of similar cells in the CURRENT gene space, and genes by number of similar genes in the gene-embedding space.">Density</button>
     <button id="qc-pt" class="qc-btn">Pseudotime</button>
     <button id="qc-region" class="qc-btn" title="Colour each cell by its dissected region (V1 = orange, ALM = purple). Greyed out for single-region cohorts.">Region</button>
     <button id="qc-age" class="qc-btn" title="Colour each cell by its developmental stage (E11.5 → P56). Greyed out for cohorts without age info.">Age</button>
@@ -706,7 +706,6 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
     <span class="gs-title">Gene structure (recoverability)</span>
     <button id="genestruct-btn" class="qc-btn">Score genes</button>
     <button id="genestruct-color" class="qc-btn" disabled>Colour by recoverability</button>
-    <button id="genestruct-density" class="qc-btn" title="Number of similar genes: local density of each shown gene among the OTHER shown genes in the gene-embedding (loading) space. Each gene gets a Gaussian-kernel effective neighbour count (median-heuristic bandwidth). Reflects the current gene filter / embedding.">&asymp; similar genes</button>
     <span class="label" style="margin-left:8px;">latent dims K:</span>
     <input id="genestruct-k" type="range" min="2" max="100" step="1" value="30" style="width:110px; vertical-align:middle;">
     <span id="genestruct-k-val" style="color:#1f77b4; font-weight:600;">30</span>
@@ -1170,11 +1169,6 @@ function colorBySimilarGenes() {{
   for (const v of vals) {{ if (v < lo) lo = v; if (v > hi) hi = v; }}
   setColorKeyGradient('similar genes (' + G + ' shown)', 'viridis', lo, hi, v => v.toFixed(1));
 }}
-document.getElementById('genestruct-density').addEventListener('click', () => {{
-  const b = document.getElementById('genestruct-density'); b.disabled = true;
-  if (typeof gsStatus !== 'undefined' && gsStatus) gsStatus.textContent = 'computing density…';
-  setTimeout(() => {{ try {{ colorBySimilarGenes(); }} finally {{ b.disabled = false; }} }}, 30);
-}});
 gsSlider2.addEventListener('input', () => {{
   gsThrVal.textContent = parseFloat(gsSlider2.value) > 0 ? (+gsSlider2.value).toFixed(2) : 'off';
   applyGeneFilter();
@@ -1258,7 +1252,7 @@ function colorBySimilarCells() {{
 }}
 document.getElementById('qc-density').addEventListener('click', () => {{
   const b=document.getElementById('qc-density'); b.disabled=true; status.innerHTML='computing density&hellip;';
-  setTimeout(() => {{ try {{ colorBySimilarCells(); }} finally {{ b.disabled=false; }} }}, 30);
+  setTimeout(() => {{ try {{ colorBySimilarCells(); colorBySimilarGenes(); }} finally {{ b.disabled=false; }} }}, 30);
 }});
 document.getElementById('qc-pt').addEventListener('click', () => {{
   // Pseudotime colour = A1 weight (cell_score[:,0]) ascending → viridis on active cells.

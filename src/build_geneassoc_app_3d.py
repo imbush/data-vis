@@ -424,7 +424,7 @@ or <b>mutual information</b> (any dependence). Hover a result to recolour the ce
 </div>
 
 <div class="ctrl-box">
-  <div class="ctrl-box-title">Focus Variable &amp; Association</div>
+  <div class="ctrl-box-title">Find genes associated with variable</div>
   <div class="controls-row" id="ga-focustype-row" style="gap:6px;">
     <span class="label">Focus on:</span>
     <button id="ft-gene" class="qc-btn active" title="Rank genes by association to a focus GENE's expression.">Gene</button>
@@ -446,7 +446,6 @@ or <b>mutual information</b> (any dependence). Hover a result to recolour the ce
     <span class="label">rank by:</span>
     <button id="metric-corr" class="qc-btn active" title="Signed Pearson correlation across cells — positive and negative linear association.">correlation (signed)</button>
     <button id="metric-mi" class="qc-btn" title="Mutual information (8-bin) across cells — captures any dependence, including non-linear / non-monotonic.">mutual information</button>
-    <button id="genestruct-density" class="qc-btn" style="margin-left:10px;" title="Number of similar genes: local density of each shown gene among the OTHER shown genes in the gene-embedding (loading) space. Each gene gets a Gaussian-kernel effective neighbour count (median-heuristic bandwidth). Reflects the current gene filter / embedding.">&asymp; similar genes</button>
     <span class="label" style="margin-left:10px;">top</span>
     <input id="ga-topn" type="number" min="5" max="60" value="20" step="5" style="width:56px;">
     <span id="ga-status" style="margin-left:10px; color:var(--muted);"></span>
@@ -461,7 +460,7 @@ or <b>mutual information</b> (any dependence). Hover a result to recolour the ce
     <button id="qc-counts" class="qc-btn">Counts</button>
     <button id="qc-genes" class="qc-btn">Genes</button>
     <button id="qc-ribo" class="qc-btn">% ribo</button>
-    <button id="qc-density" class="qc-btn" title="Number of similar cells: local density of each cell in the CURRENT gene space (the considered genes). Genes are first reduced to a K-dim PCA latent so neighbour counts stay meaningful despite the curse of dimensionality, then each cell gets a Gaussian-kernel effective count of nearby cells (median-heuristic bandwidth, anchor-subsampled). Recompute-aware.">&asymp; similar cells</button>
+    <button id="qc-density" class="qc-btn" title="Colour BOTH plots by local density: cells by number of similar cells in the CURRENT gene space, and genes by number of similar genes in the gene-embedding space.">Density</button>
     <button id="qc-pt" class="qc-btn" title="Colour cells by pseudotime (PC1 of the current embedding).">Pseudotime</button>
     <button id="qc-region" class="qc-btn" title="Colour each cell by its region / genotype. Greyed out for single-region cohorts.">Region/Genotype</button>
     <button id="qc-age" class="qc-btn" title="Colour each cell by its developmental stage. Greyed out for cohorts without age info.">Age</button>
@@ -693,10 +692,10 @@ function colorByQCCats(arr, label, colorOf, cats, btnId){
 }
 const fmtInt = v => Math.round(v).toLocaleString();
 
-// "≈ similar cells" density (recompute-aware; basis = considered genes).
+// "Density" — colours BOTH cells (similar cells) and the gene biplot (similar genes).
 document.getElementById('qc-density').addEventListener('click',()=>{
   const b=document.getElementById('qc-density'); b.disabled=true; status.innerHTML='computing density…';
-  setTimeout(()=>{ try{ colorBySimilarCells(); }finally{ b.disabled=false; } },30);
+  setTimeout(()=>{ try{ colorBySimilarCells(); colorBySimilarGenes(); }finally{ b.disabled=false; } },30);
 });
 // Pseudotime = PC1 of the current embedding (cell_score[:,0]).
 document.getElementById('qc-pt').addEventListener('click',()=>{
@@ -1346,12 +1345,6 @@ function colorBySimilarGenes() {
   if (lo === Infinity) { lo = 0; hi = 0; }
   setColorKeyGradient('similar genes (' + G + ' shown)', 'viridis', lo, hi, v => v.toFixed(1));
 }
-document.getElementById('genestruct-density').addEventListener('click', () => {
-  const b = document.getElementById('genestruct-density'); b.disabled = true;
-  const gs = document.getElementById('ga-status'); if (gs) gs.textContent = 'computing density…';
-  setTimeout(() => { try { colorBySimilarGenes(); } finally { b.disabled = false;
-    const g2 = document.getElementById('ga-status'); if (g2) g2.textContent = ''; } }, 30);
-});
 gsSlider2.addEventListener('input', () => {
   gsThrVal.textContent = parseFloat(gsSlider2.value) > 0 ? (+gsSlider2.value).toFixed(2) : 'off';
   applyGeneFilter(); if (focusActive()) computeAssoc();
@@ -1392,6 +1385,7 @@ function setFocusType(ft){
     else { clearFocusUI(); status.innerHTML='Pick a focus gene to begin.'; }
   } else {
     focusGene=-1;
+    buildFocusVec();   // set focusVec for layer|pt|ribo so focusActive() is true before computeAssoc()
     status.innerHTML='Focus: <b>'+focusLabel()+'</b> — '+metricVerb()+'.';
     computeAssoc();
   }
