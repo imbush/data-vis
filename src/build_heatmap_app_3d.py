@@ -729,8 +729,8 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
       <span class="heatmap-controls">
         <span class="label">mode</span>
         <button class="mode-btn active" data-mode="pc" title="Order cells along a PC axis.">PC axis</button>
-        <button class="mode-btn" data-mode="rooted" title="Order cells by distance from a picked root cell (rooted pseudotime).">Rooted pseudotime</button>
-        <button class="mode-btn" data-mode="celltype_rooted" title="Group by cell type, then order by rooted pseudotime within type.">Cell type + rooted</button>
+        <button class="mode-btn" data-mode="rooted" title="Order cells by principal-curve pseudotime (Hastie-Stuetzle arc length), oriented so the picked root cell is at t=0.">Rooted pseudotime</button>
+        <button class="mode-btn" data-mode="celltype_rooted" title="Group by cell type, then order by principal-curve pseudotime within type.">Cell type + rooted</button>
         <button class="mode-btn" data-mode="gene" title="Order cells by a chosen gene's expression; rows by correlation to it.">Sort by gene</button>
       </span>
       <span class="heatmap-controls">
@@ -738,7 +738,7 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
         <button class="order-btn active" data-axis="0">PC1</button>
         <button class="order-btn" data-axis="1">PC2</button>
         <button class="order-btn" data-axis="2">PC3</button>
-        <button class="order-btn" data-axis="-1" title="Order cells along the first principal embedding axis (= biological pseudotime).">Pseudotime</button>
+        <button class="order-btn" data-axis="-1" title="Order cells by principal-curve pseudotime (Hastie-Stuetzle arc length; pick a root cell to orient it).">Pseudotime</button>
         <label class="group-by-toggle"><input type="checkbox" id="group-by-celltype"> group by cell type first</label>
       </span>
       <span class="heatmap-controls">
@@ -1215,9 +1215,15 @@ document.getElementById('qc-density').addEventListener('click', () => {{
   setTimeout(() => {{ try {{ colorBySimilarCells(); colorBySimilarGenes(); }} finally {{ b.disabled=false; }} }}, 30);
 }});
 document.getElementById('qc-pt').addEventListener('click', () => {{
-  // Pseudotime colour = PC1 (cell_score[:,0]) ascending → viridis on active cells.
-  const arr = cell_score.map(s => s[0]);
-  colorByQC(arr, 'pseudotime (PC1)', v => v.toFixed(2));
+  // Pseudotime colour = principal-curve arc length (Hastie-Stuetzle) over the
+  // active cells → viridis. Oriented by the picked root cell if one is set.
+  const active = [];
+  for (let i = 0; i < cell_active.length; i++) if (cell_active[i]) active.push(i);
+  const rootActive = (rootCell !== null && cell_active[rootCell]);
+  const lam = principalCurvePT(active, rootActive ? rootCell : -1);
+  const arr = new Array(cell_score.length).fill(0);
+  for (let a = 0; a < active.length; a++) arr[active[a]] = lam[a];
+  colorByQC(arr, 'pseudotime (principal curve)', v => v.toFixed(2));
 }});
 
 // Colour by region (V1 vs ALM). Carries per-cell `dissected_region` —
@@ -1779,6 +1785,82 @@ function rootedDist(i) {{
   return Math.sqrt(s);
 }}
 
+// Principal-curve pseudotime (Hastie-Stuetzle arc length), ported from
+// bayesian-continua/src/ordering.py. Given a list of cell indices and an
+// optional root cell (global index, or -1/null for unrooted), returns a plain
+// Array of lambda in [0,1] aligned to cellIdxs. Embedding = cell_score[i]
+// (length-3 [PC1,PC2,PC3]; missing dims 0). NC=min(n,200) moving-average anchors.
+function principalCurvePT(cellIdxs, root) {{
+  const D = 3;
+  const n = cellIdxs.length;
+  const coord = (idx, k) => {{ const s = cell_score[idx]; return (s && s.length > k) ? s[k] : 0; }};
+  const X = new Array(n);
+  for (let a = 0; a < n; a++) {{
+    const idx = cellIdxs[a]; const row = new Array(D);
+    for (let k = 0; k < D; k++) row[k] = coord(idx, k);
+    X[a] = row;
+  }}
+  const rootValid = (root !== null && root !== undefined && root >= 0);
+  let rootPos = -1;
+  if (rootValid) {{ for (let a = 0; a < n; a++) if (cellIdxs[a] === root) {{ rootPos = a; break; }} }}
+  let lam = new Array(n);
+  if (rootValid) {{
+    const r = new Array(D); for (let k = 0; k < D; k++) r[k] = coord(root, k);
+    for (let a = 0; a < n; a++) {{ let s = 0; for (let k = 0; k < D; k++) {{ const d = X[a][k] - r[k]; s += d * d; }} lam[a] = Math.sqrt(s); }}
+  }} else {{
+    for (let a = 0; a < n; a++) lam[a] = X[a][0];
+  }}
+  const normalize = arr => {{
+    let lo = Infinity, hi = -Infinity;
+    for (const v of arr) {{ if (v < lo) lo = v; if (v > hi) hi = v; }}
+    const ptp = (hi - lo) + 1e-9;
+    return arr.map(v => (v - lo) / ptp);
+  }};
+  if (n < 15) return normalize(lam);
+  const w = Math.max(5, Math.floor(0.08 * n));
+  const NC = Math.min(n, 200);
+  const nIter = 8;
+  for (let it = 0; it < nIter; it++) {{
+    lam = normalize(lam);
+    const o = Array.from({{length: n}}, (_, a) => a);
+    o.sort((a, b) => lam[a] - lam[b]);
+    const anchors = new Array(NC);
+    for (let j = 0; j < NC; j++) {{
+      const p = (NC === 1) ? 0 : Math.round(j * (n - 1) / (NC - 1));
+      const lo = Math.max(0, p - w), hi = Math.min(n - 1, p + w);
+      const c = new Array(D).fill(0); let cnt = 0;
+      for (let q = lo; q <= hi; q++) {{ const row = X[o[q]]; for (let k = 0; k < D; k++) c[k] += row[k]; cnt++; }}
+      for (let k = 0; k < D; k++) c[k] /= cnt;
+      anchors[j] = c;
+    }}
+    const s = new Array(NC); s[0] = 0;
+    for (let j = 1; j < NC; j++) {{
+      let d2 = 0; for (let k = 0; k < D; k++) {{ const d = anchors[j][k] - anchors[j - 1][k]; d2 += d * d; }}
+      s[j] = s[j - 1] + Math.sqrt(d2);
+    }}
+    for (let a = 0; a < n; a++) {{
+      const row = X[a]; let best = 0, bestD = Infinity;
+      for (let j = 0; j < NC; j++) {{
+        const ac = anchors[j]; let d2 = 0;
+        for (let k = 0; k < D; k++) {{ const d = row[k] - ac[k]; d2 += d * d; }}
+        if (d2 < bestD) {{ bestD = d2; best = j; }}
+      }}
+      lam[a] = s[best];
+    }}
+  }}
+  lam = normalize(lam);
+  if (rootPos >= 0 && lam[rootPos] > 0.5) {{ for (let a = 0; a < n; a++) lam[a] = 1 - lam[a]; }}
+  return lam;
+}}
+// Compute principal-curve pseudotime over the given active cells (once per
+// render) and return a Map from global cell index -> lambda.
+function principalCurveMap(activeIdx, root) {{
+  const lam = principalCurvePT(activeIdx, root);
+  const m = new Map();
+  for (let a = 0; a < activeIdx.length; a++) m.set(activeIdx[a], lam[a]);
+  return m;
+}}
+
 function renderHeatmap() {{
   sizeHeatmapCanvas();
   const ctx = heatCanvas.getContext('2d', {{alpha: false}});
@@ -1790,22 +1872,23 @@ function renderHeatmap() {{
   for (let i = 0; i < cell_active.length; i++) if (cell_active[i]) activeIdx.push(i);
   const axis = heatmapOrderAxis;
   // Per-cell sort key depends on the mode:
-  //  'pc'              → cell_score[i][axis] (pseudotime axis -1 = PC1).
-  //  'rooted' / 'celltype_rooted' → Euclidean distance from the picked root in
-  //                       cell_score space (ascending); falls back to PC1 if no root.
+  //  'pc' + axis -1    → principal-curve pseudotime (arc length; root optional).
+  //  'pc' + axis 0/1/2 → cell_score[i][axis] (PC1/2/3).
+  //  'rooted' / 'celltype_rooted' → principal-curve pseudotime oriented by the
+  //                       picked root cell (falls back to unrooted curve if no root).
   //  'gene'            → that gene's expression readVal(i, gene) ascending.
   let sortKey;
   let caption = 'shown genes z-expression';   // appended to the heatmap caption text
+  const rootActive = (rootCell !== null && cell_active[rootCell]);
   if (heatmapMode === 'rooted' || heatmapMode === 'celltype_rooted') {{
-    if (rootCell !== null && cell_active[rootCell]) {{
-      sortKey = (i => rootedDist(i));
-      caption += ' — cells by distance from root cell #' + rootCell;
-    }} else {{
-      sortKey = (i => cell_score[i][0]);
-      caption += (rootCell === null)
-        ? ' — pick a root cell (falling back to PC1 order)'
-        : ' — root inactive; falling back to PC1 order';
-    }}
+    // Principal-curve pseudotime over the active cells, oriented by the root.
+    const ptMap = principalCurveMap(activeIdx, rootActive ? rootCell : -1);
+    sortKey = (i => ptMap.get(i));
+    caption += rootActive
+      ? ' — cells by principal-curve pseudotime from root cell #' + rootCell
+      : (rootCell === null
+          ? ' — cells by principal-curve pseudotime (pick a root to orient)'
+          : ' — root inactive; principal-curve pseudotime (unrooted)');
   }} else if (heatmapMode === 'gene') {{
     if (heatmapSortGene >= 0) {{
       sortKey = (i => readVal(i, heatmapSortGene));
@@ -1814,9 +1897,16 @@ function renderHeatmap() {{
       sortKey = (i => cell_score[i][0]);
       caption += ' — choose a gene to sort by (falling back to PC1 order)';
     }}
+  }} else if (axis === -1) {{
+    // 'pc' mode, pseudotime axis: principal-curve pseudotime (root optional).
+    const ptMap = principalCurveMap(activeIdx, rootActive ? rootCell : -1);
+    sortKey = (i => ptMap.get(i));
+    caption += rootActive
+      ? ' — cells by principal-curve pseudotime from root cell #' + rootCell
+      : ' — cells by principal-curve pseudotime';
   }} else {{
-    // 'pc' mode: pseudotime axis (-1) = PC1.
-    sortKey = (axis === -1) ? (i => cell_score[i][0]) : (i => cell_score[i][axis]);
+    // 'pc' mode, PC axis: order by that PC score.
+    sortKey = (i => cell_score[i][axis]);
     caption += ' — genes by argmax of smoothed expression';
   }}
   // 'celltype_rooted' groups by cell type first; reuse the group-by code path.

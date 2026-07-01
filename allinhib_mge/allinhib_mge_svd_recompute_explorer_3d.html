@@ -893,6 +893,84 @@ function valuesToViridis(values) {
   const range = (hi > lo) ? (hi - lo) : 1;
   return values.map(v => viridis[Math.max(0, Math.min(255, Math.round(255*(v-lo)/range)))]);
 }
+// Principal-curve pseudotime (Hastie-Stuetzle arc length), ported from
+// bayesian-continua/src/ordering.py. Given a list of cell indices and an
+// optional root cell (global index, or -1/null for unrooted), returns a plain
+// Array of lambda in [0,1] indexed 0..cellIdxs.length-1 (aligned to cellIdxs).
+// Embedding coords come from cell_score[i] (length-3 [PC1,PC2,PC3]; missing
+// dims treated as 0). Uses NC=min(n,200) moving-average curve anchors for speed.
+// Returns a PLAIN Array (not Float64Array) so the viridis colour path is safe.
+function principalCurvePT(cellIdxs, root) {
+  const D = 3;
+  const n = cellIdxs.length;
+  const coord = (idx, k) => { const s = cell_score[idx]; return (s && s.length > k) ? s[k] : 0; };
+  // X: n x D embedding for these cells.
+  const X = new Array(n);
+  for (let a = 0; a < n; a++) {
+    const idx = cellIdxs[a]; const row = new Array(D);
+    for (let k = 0; k < D; k++) row[k] = coord(idx, k);
+    X[a] = row;
+  }
+  const rootValid = (root !== null && root !== undefined && root >= 0);
+  // Position of the root within cellIdxs (for orientation), -1 if not in set.
+  let rootPos = -1;
+  if (rootValid) { for (let a = 0; a < n; a++) if (cellIdxs[a] === root) { rootPos = a; break; } }
+  // init lambda.
+  let lam = new Array(n);
+  if (rootValid) {
+    // Euclidean distance in cell_score from the root cell.
+    const r = new Array(D); for (let k = 0; k < D; k++) r[k] = coord(root, k);
+    for (let a = 0; a < n; a++) { let s = 0; for (let k = 0; k < D; k++) { const d = X[a][k] - r[k]; s += d * d; } lam[a] = Math.sqrt(s); }
+  } else {
+    for (let a = 0; a < n; a++) lam[a] = X[a][0];   // PC1
+  }
+  const normalize = arr => {
+    let lo = Infinity, hi = -Infinity;
+    for (const v of arr) { if (v < lo) lo = v; if (v > hi) hi = v; }
+    const ptp = (hi - lo) + 1e-9;
+    return arr.map(v => (v - lo) / ptp);
+  };
+  if (n < 15) return normalize(lam);
+  const w = Math.max(5, Math.floor(0.08 * n));
+  const NC = Math.min(n, 200);
+  const nIter = 8;
+  for (let it = 0; it < nIter; it++) {
+    lam = normalize(lam);
+    // order cells by lambda.
+    const o = Array.from({length: n}, (_, a) => a);
+    o.sort((a, b) => lam[a] - lam[b]);
+    // anchors: NC moving-average points along the order.
+    const anchors = new Array(NC);
+    for (let j = 0; j < NC; j++) {
+      const p = (NC === 1) ? 0 : Math.round(j * (n - 1) / (NC - 1));
+      const lo = Math.max(0, p - w), hi = Math.min(n - 1, p + w);
+      const c = new Array(D).fill(0); let cnt = 0;
+      for (let q = lo; q <= hi; q++) { const row = X[o[q]]; for (let k = 0; k < D; k++) c[k] += row[k]; cnt++; }
+      for (let k = 0; k < D; k++) c[k] /= cnt;
+      anchors[j] = c;
+    }
+    // arc length s[j] along the anchors.
+    const s = new Array(NC); s[0] = 0;
+    for (let j = 1; j < NC; j++) {
+      let d2 = 0; for (let k = 0; k < D; k++) { const d = anchors[j][k] - anchors[j - 1][k]; d2 += d * d; }
+      s[j] = s[j - 1] + Math.sqrt(d2);
+    }
+    // project each cell to nearest anchor -> lambda = s[nearest].
+    for (let a = 0; a < n; a++) {
+      const row = X[a]; let best = 0, bestD = Infinity;
+      for (let j = 0; j < NC; j++) {
+        const ac = anchors[j]; let d2 = 0;
+        for (let k = 0; k < D; k++) { const d = row[k] - ac[k]; d2 += d * d; }
+        if (d2 < bestD) { bestD = d2; best = j; }
+      }
+      lam[a] = s[best];
+    }
+  }
+  lam = normalize(lam);
+  // Orient so the root sits at t=0.
+  if (rootPos >= 0 && lam[rootPos] > 0.5) { for (let a = 0; a < n; a++) lam[a] = 1 - lam[a]; }
+  return lam;
+}
 function colorByQC(arr, label, fmt) {
   const valid = arr.filter((v, i) => cell_active[i]);
   const palette = valuesToViridis(valid);
@@ -968,9 +1046,14 @@ document.getElementById('qc-density').addEventListener('click', () => {
   setTimeout(() => { try { colorBySimilarCells(); colorBySimilarGenes(); } finally { b.disabled=false; } }, 30);
 });
 document.getElementById('qc-pt').addEventListener('click', () => {
-  // Pseudotime colour = PC1 (cell_score[:,0]) ascending → viridis on active cells.
-  const arr = cell_score.map(s => s[0]);
-  colorByQC(arr, 'pseudotime (PC1)', v => v.toFixed(2));
+  // Pseudotime colour = principal-curve arc length (Hastie-Stuetzle) over the
+  // active cells → viridis. Unrooted here (PC1-seeded); no root picker in this app.
+  const active = [];
+  for (let i = 0; i < cell_active.length; i++) if (cell_active[i]) active.push(i);
+  const lam = principalCurvePT(active, -1);
+  const arr = new Array(cell_score.length).fill(0);
+  for (let a = 0; a < active.length; a++) arr[active[a]] = lam[a];
+  colorByQC(arr, 'pseudotime (principal curve)', v => v.toFixed(2));
 });
 
 // Colour by region (V1 vs ALM). Carries per-cell `dissected_region` —

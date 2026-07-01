@@ -429,7 +429,7 @@ or <b>mutual information</b> (any dependence). Hover a result to recolour the ce
     <span class="label">Focus on:</span>
     <button id="ft-gene" class="qc-btn active" title="Rank genes by association to a focus GENE's expression.">Gene</button>
     <button id="ft-layer" class="qc-btn" title="Rank genes by association to the cell's dissected cortical-layer depth.">Layer of microdissection</button>
-    <button id="ft-pt" class="qc-btn" title="Rank genes by association to rooted pseudotime (distance in PC1-3 from a chosen root cell; falls back to PC1).">Pseudotime</button>
+    <button id="ft-pt" class="qc-btn" title="Rank genes by association to principal-curve pseudotime (Hastie-Stuetzle arc length over the selected cells; pick a root cell to orient it).">Pseudotime</button>
     <button id="ft-ribo" class="qc-btn" title="Rank genes by association to each cell's % ribosomal counts.">% ribo</button>
     <span id="ga-root-controls" style="margin-left:10px; display:none;">
       <button id="pick-root" class="qc-btn" title="Arm, then click a cell in the left plot to set it as the pseudotime root.">Pick root cell</button>
@@ -790,19 +790,69 @@ function focusValAt(i){ return focusType==='gene' ? expr_matrix[i*N_GENES+focusG
 function focusLabel(){
   if(focusType==='gene') return gene_name[focusGene];
   if(focusType==='layer') return 'layer of microdissection';
-  if(focusType==='pt') return rootCell>=0 ? ('rooted pseudotime (root #'+rootCell+')') : 'pseudotime (PC1)';
+  if(focusType==='pt') return rootCell>=0 ? ('pseudotime (principal curve, root #'+rootCell+')') : 'pseudotime (principal curve)';
   return '% ribo';
 }
-// Rooted pseudotime over ALL cells: Euclidean distance in the 3 PC scores from
-// the chosen root cell; falls back to PC1 when no root is set. Returns a plain
-// Array (NOT a typed array — the viridis colour path coerces typed arrays to NaN).
+// Principal-curve pseudotime (Hastie-Stuetzle arc length), ported from
+// bayesian-continua/src/ordering.py. Given a list of cell indices and an
+// optional root cell (global index, or -1 for unrooted), returns a plain Array
+// of lambda in [0,1] aligned to cellIdxs. Embedding = cell_score[i] (length-3
+// [PC1,PC2,PC3]; missing dims 0). NC=min(n,200) moving-average anchors.
+function principalCurvePT(cellIdxs, root){
+  const D=3;
+  const n=cellIdxs.length;
+  const coord=(idx,k)=>{ const s=cell_score[idx]; return (s&&s.length>k)?s[k]:0; };
+  const X=new Array(n);
+  for(let a=0;a<n;a++){ const idx=cellIdxs[a]; const row=new Array(D);
+    for(let k=0;k<D;k++) row[k]=coord(idx,k); X[a]=row; }
+  const rootValid=(root!==null&&root!==undefined&&root>=0);
+  let rootPos=-1;
+  if(rootValid){ for(let a=0;a<n;a++) if(cellIdxs[a]===root){ rootPos=a; break; } }
+  let lam=new Array(n);
+  if(rootValid){ const r=new Array(D); for(let k=0;k<D;k++) r[k]=coord(root,k);
+    for(let a=0;a<n;a++){ let s=0; for(let k=0;k<D;k++){ const d=X[a][k]-r[k]; s+=d*d; } lam[a]=Math.sqrt(s); } }
+  else { for(let a=0;a<n;a++) lam[a]=X[a][0]; }
+  const normalize=arr=>{ let lo=Infinity,hi=-Infinity;
+    for(const v of arr){ if(v<lo) lo=v; if(v>hi) hi=v; }
+    const ptp=(hi-lo)+1e-9; return arr.map(v=>(v-lo)/ptp); };
+  if(n<15) return normalize(lam);
+  const w=Math.max(5,Math.floor(0.08*n));
+  const NC=Math.min(n,200);
+  const nIter=8;
+  for(let it=0;it<nIter;it++){
+    lam=normalize(lam);
+    const o=Array.from({length:n},(_,a)=>a);
+    o.sort((a,b)=>lam[a]-lam[b]);
+    const anchors=new Array(NC);
+    for(let j=0;j<NC;j++){
+      const p=(NC===1)?0:Math.round(j*(n-1)/(NC-1));
+      const lo=Math.max(0,p-w), hi=Math.min(n-1,p+w);
+      const c=new Array(D).fill(0); let cnt=0;
+      for(let q=lo;q<=hi;q++){ const row=X[o[q]]; for(let k=0;k<D;k++) c[k]+=row[k]; cnt++; }
+      for(let k=0;k<D;k++) c[k]/=cnt; anchors[j]=c;
+    }
+    const s=new Array(NC); s[0]=0;
+    for(let j=1;j<NC;j++){ let d2=0; for(let k=0;k<D;k++){ const d=anchors[j][k]-anchors[j-1][k]; d2+=d*d; } s[j]=s[j-1]+Math.sqrt(d2); }
+    for(let a=0;a<n;a++){ const row=X[a]; let best=0,bestD=Infinity;
+      for(let j=0;j<NC;j++){ const ac=anchors[j]; let d2=0;
+        for(let k=0;k<D;k++){ const d=row[k]-ac[k]; d2+=d*d; }
+        if(d2<bestD){ bestD=d2; best=j; } }
+      lam[a]=s[best]; }
+  }
+  lam=normalize(lam);
+  if(rootPos>=0&&lam[rootPos]>0.5){ for(let a=0;a<n;a++) lam[a]=1-lam[a]; }
+  return lam;
+}
+// Principal-curve pseudotime over the SELECTED cells, oriented by the chosen
+// root cell (if set). Returns a plain Array over ALL cells; non-selected cells
+// are NaN so the association drops them. (NOT a typed array — the viridis
+// colour path coerces typed arrays to NaN.)
 function rootedPseudotime(){
-  const out=new Array(N_CELLS);
-  if(rootCell>=0){ const r=cell_score[rootCell];
-    for(let i=0;i<N_CELLS;i++){ const s=cell_score[i];
-      const dx=s[0]-r[0], dy=s[1]-r[1], dz=s[2]-r[2];
-      out[i]=Math.sqrt(dx*dx+dy*dy+dz*dz); } }
-  else { for(let i=0;i<N_CELLS;i++) out[i]=cell_score[i][0]; }
+  const out=new Array(N_CELLS).fill(NaN);
+  const sel=getSel();
+  if(sel.length===0) return out;
+  const lam=principalCurvePT(sel, rootCell>=0 ? rootCell : -1);
+  for(let a=0;a<sel.length;a++) out[sel[a]]=lam[a];
   return out;
 }
 // Build the focus vector for the current cell-variable focus type over ALL cells.
