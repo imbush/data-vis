@@ -72,7 +72,7 @@ function vircol(t){t=Math.max(0,Math.min(1,t));const i=Math.min(viridis.length-1
 const SUBC=[...new Set(D.subclass)].sort();
 const TT=[...new Set(D.t_type)].sort();
 const tab20=['#1f77b4','#aec7e8','#ff7f0e','#ffbb78','#2ca02c','#98df8a','#d62728','#ff9896','#9467bd','#c5b0d5','#8c564b','#c49c94','#e377c2','#f7b6d2','#7f7f7f','#c7c7c7','#bcbd22','#dbdb8d','#17becf','#9edae5'];
-function catcolors(cats){const m={};cats.forEach((c,i)=>m[c]=tab20[i%tab20.length]);return m;}
+function catcolors(cats){const m={};const n=cats.length;cats.forEach((c,i)=>{m[c]=(n<=tab20.length)?tab20[i%tab20.length]:`hsl(${Math.round(360*i/n)},62%,48%)`;});return m;}
 const subcCol=catcolors(SUBC), ttCol=catcolors(TT);
 let colorMode='met', isolate=null;
 function numArr(mode){
@@ -127,6 +127,14 @@ let projView='bars';
 function topTargets(prof,topn){return prof.map((v,i)=>[v,i]).filter(p=>p[0]>0).sort((a,b)=>b[0]-a[0]).slice(0,topn).map(p=>p[1]);}
 function drawBars(){
   const topn=parseInt(document.getElementById('proj-topn').value)||30;
+  if(isolate && !D.met_proj[isolate]){
+    document.getElementById('proj-title').textContent=`${isolate} — no whole-neuron reconstructions`;
+    Plotly.react('proj-plot',[{x:[],y:[],type:'bar'}],
+      {height:140,margin:{t:20,b:20},xaxis:{visible:false},yaxis:{visible:false},paper_bgcolor:'white',plot_bgcolor:'white',
+       annotations:[{x:0.5,y:0.5,xref:'paper',yref:'paper',showarrow:false,font:{size:13,color:'#999'},
+         text:`No whole-neuron (projection) morphologies were reconstructed for <b>${isolate}</b>.`}]},{displayModeBar:false,responsive:true});
+    return;
+  }
   const prof=(isolate&&D.met_proj[isolate])?D.met_proj[isolate]:D.all_proj;
   const ncell=isolate?(D.met_ncell[isolate]||0):341;
   document.getElementById('proj-title').textContent=isolate?`${isolate}  (n=${ncell} WNM)`:'all MET-types';
@@ -206,7 +214,7 @@ three modalities and see where it projects.</div>
     <button class="cb active" data-mode="met">MET-type</button>
     <button class="cb" data-mode="subclass">Subclass</button>
     <button class="cb" data-mode="ttype">T-type</button>
-    <button class="cb" data-mode="depth">Cortical depth</button>
+    <button class="cb" data-mode="depth">Soma depth <span style="opacity:.7">(n=389)</span></button>
     <span style="margin-left:8px" class="hint">ephys:</span><select id="ephys-sel"><option value="">—</option></select>
     <span class="hint">morphology:</span><select id="morph-sel"><option value="">—</option></select>
     <span class="hint">transcriptomic:</span><select id="tx-sel"><option value="">—</option><option value="tx_pc1">within-subclass PC1</option><option value="tx_pc2">within-subclass PC2</option></select>
