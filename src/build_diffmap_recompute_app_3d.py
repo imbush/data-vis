@@ -50,6 +50,20 @@ def main():
         'cell_subclass',
         [GROUP_NAME] * len(subs)
     ))
+    # Optional dual-resolution marker-named subtype levels (Gao dev-VIS cohort;
+    # see build_devvis_marker_names.py). When both are present the recompute UI
+    # exposes a cluster/subcluster granularity toggle and DEFAULTS to the finer
+    # subcluster level. Otherwise it uses the single `subs` level unchanged.
+    _named_subcluster = proj.get('subs_named_subcluster')
+    _named_cluster    = proj.get('subs_named_cluster')
+    DUAL_LEVEL = (_named_subcluster is not None and _named_cluster is not None)
+    if DUAL_LEVEL:
+        subs     = np.array([str(x) for x in _named_subcluster])  # default = subcluster
+        subs_alt = np.array([str(x) for x in _named_cluster])     # coarser = cluster
+        DEFAULT_LEVEL, ALT_LEVEL = 'subcluster', 'cluster'
+    else:
+        subs_alt = None
+        DEFAULT_LEVEL, ALT_LEVEL = 'subtype', None
     cell_region_arr = proj.get('cell_region')
     if cell_region_arr is None:
         cell_region_list = None
@@ -79,7 +93,10 @@ def main():
     n_genes   = len(gene_names)
 
     qc = base.compute_or_load_qc_full()
-    assert np.array_equal(np.array(qc['subs']), subs), 'QC/proj cell-order mismatch'
+    # Compare against the ORIGINAL proj subs (cell_cluster); `subs` may have been
+    # switched to a marker-named display level for dual-resolution cohorts, but
+    # cell order is identical (same filtered anndata), which is what this checks.
+    assert np.array_equal(np.array(qc['subs']), np.array(proj['subs'])), 'QC/proj cell-order mismatch'
     qc_total, qc_ngenes, qc_ribo = (np.asarray(qc['total_counts']),
                                     np.asarray(qc['n_genes']),
                                     np.asarray(qc['pct_ribo']))
@@ -264,50 +281,74 @@ def main():
     std_min,  std_max  = float(np.min(std_expr)),  float(np.max(std_expr))
 
     # Subtype checkbox row, grouped by cell_subclass with per-group all/none.
-    subtype_counts = {c: int(np.sum(subs == c)) for c in cats}
-    subtype_to_subclass = {}
-    for s, csc in zip(subs, cell_subclass):
-        if s not in subtype_to_subclass:
-            subtype_to_subclass[s] = csc
-    subclass_order = sorted(set(cell_subclass.tolist()))
-    by_subclass = {csc: [c for c in cats if subtype_to_subclass.get(c) == csc]
-                   for csc in subclass_order}
+    # Cohort-level default subset: only these subtypes start checked. Empty
+    # tuple (default) means every checkbox starts checked.
     default_subset = set(base.GROUP.get('default_selected_subtypes') or ())
-    def _chk(c):
-        return 'checked' if (not default_subset or c in default_subset) else ''
-    subtype_group_html_parts = []
-    for csc in subclass_order:
-        sub_subs = by_subclass[csc]
-        if not sub_subs: continue
-        total_in_grp = sum(subtype_counts[c] for c in sub_subs)
-        subtype_group_html_parts.append(
-            f'<div class="subt-group" data-subclass="{csc}">'
-            f'<div class="subt-group-head">'
-            f'<b>{csc}</b> <span class="ct">({total_in_grp} cells, {len(sub_subs)} subtypes)</span>'
-            f'<button class="grp-toggle" data-grp="{csc}" data-action="all" title="Check all in {csc}">all</button>'
-            f'<button class="grp-toggle" data-grp="{csc}" data-action="none" title="Uncheck all in {csc}">none</button>'
-            f'</div>'
-            f'<div class="subt-group-checkboxes">'
-            + ''.join(
-                f'<label class="subt-chk" data-grp-sub="{csc}">'
-                f'<input type="checkbox" data-sub="{c}" data-grp="{csc}" {_chk(c)}> '
-                f'<span style="color:{subtype_palette[c]}; font-weight:700;">●</span> '
-                f'{c} <span class="ct">({subtype_counts[c]})</span></label>'
-                for c in sub_subs)
-            + '</div></div>'
-        )
-    subtype_checkbox_html = ''.join(subtype_group_html_parts)
-    auto_recompute_on_load = bool(default_subset)
-
-    # Build interned (cats + uint8 index) form of cell_subtype.
-    _subs_list = subs.tolist()
-    _cs_cats = list(dict.fromkeys(_subs_list))
-    if len(_cs_cats) > 256:
-        raise RuntimeError(f"cell_subtype has >256 unique categories; bump to uint16")
-    _cs_lookup = {c: i for i, c in enumerate(_cs_cats)}
-    _cs_idx_arr = np.array([_cs_lookup[v] for v in _subs_list], dtype=np.uint8)
+    subclass_order = sorted(set(cell_subclass.tolist()))
     import base64 as _b64m
-    _cs_idx_b64 = _b64m.b64encode(_cs_idx_arr.tobytes()).decode("ascii")
+
+    def _build_level(subs_x, cats_x, palette_x, level_id, active):
+        """Return (panel_html, cs_cats, cs_idx_b64, color_default) for one
+        subtype resolution. The panel is a `.subt-panel` wrapper (hidden unless
+        `active`) holding subclass-grouped checkboxes tagged with data-level so
+        the JS can scope selection to the active level."""
+        counts = {c: int(np.sum(subs_x == c)) for c in cats_x}
+        s2sc = {}
+        for s, csc in zip(subs_x, cell_subclass):
+            s2sc.setdefault(s, csc)
+        by_sc = {csc: [c for c in cats_x if s2sc.get(c) == csc]
+                 for csc in subclass_order}
+        def _chk(c):
+            return 'checked' if (not default_subset or c in default_subset) else ''
+        parts = [f'<div class="subt-panel{" active" if active else ""}" data-level="{level_id}">']
+        for csc in subclass_order:
+            grp = by_sc[csc]
+            if not grp: continue
+            tot = sum(counts[c] for c in grp)
+            parts.append(
+                f'<div class="subt-group" data-subclass="{csc}">'
+                f'<div class="subt-group-head">'
+                f'<b>{csc}</b> <span class="ct">({tot} cells, {len(grp)} subtypes)</span>'
+                f'<button class="grp-toggle" data-grp="{csc}" data-action="all" title="Check all in {csc}">all</button>'
+                f'<button class="grp-toggle" data-grp="{csc}" data-action="none" title="Uncheck all in {csc}">none</button>'
+                f'</div><div class="subt-group-checkboxes">'
+                + ''.join(
+                    f'<label class="subt-chk" data-grp-sub="{csc}">'
+                    f'<input type="checkbox" data-sub="{c}" data-grp="{csc}" {_chk(c)}> '
+                    f'<span style="color:{palette_x[c]}; font-weight:700;">●</span> '
+                    f'{c} <span class="ct">({counts[c]})</span></label>'
+                    for c in grp)
+                + '</div></div>')
+        parts.append('</div>')
+        cs_cats = list(dict.fromkeys(subs_x.tolist()))
+        if len(cs_cats) > 256:
+            raise RuntimeError("cell_subtype has >256 unique categories; bump to uint16")
+        look = {c: i for i, c in enumerate(cs_cats)}
+        idx = np.array([look[v] for v in subs_x.tolist()], dtype=np.uint8)
+        color_default = [palette_x[s] for s in subs_x]
+        return (''.join(parts), cs_cats, _b64m.b64encode(idx.tobytes()).decode("ascii"),
+                color_default)
+
+    # Default (finer, subcluster for dual cohorts) level.
+    subtype_checkbox_html, _cs_cats, _cs_idx_b64, cell_color_default = _build_level(
+        subs, cats, subtype_palette, DEFAULT_LEVEL, active=True)
+    # Coarser (cluster) level — only for dual-resolution cohorts.
+    if DUAL_LEVEL:
+        cats_alt = sorted(set(subs_alt.tolist()))
+        palette_alt = base.build_subtype_palette(cats_alt)
+        _panel_alt, _cs_cats_alt, _cs_idx_alt_b64, _color_default_alt = _build_level(
+            subs_alt, cats_alt, palette_alt, ALT_LEVEL, active=False)
+        subtype_checkbox_html += _panel_alt
+    auto_recompute_on_load = bool(default_subset)
+    # Granularity toggle button (dual-resolution cohorts only). Its label always
+    # names the level you'll switch TO; JS keeps it in sync.
+    level_toggle_html = (
+        '<span class="lin-sep">|</span>'
+        '<button id="level-toggle" class="level-btn" '
+        'data-default="subcluster" data-alt="cluster" '
+        'title="Switch the subtype menu (and cell colours) between the finer '
+        'subcluster level and the coarser cluster level.">▸ show cluster level</button>'
+    ) if DUAL_LEVEL else ''
     js_data = (
         f"const EXPR_SCALE  = {EXPR_SCALE};\n"
         f"const N_CELLS = {n_cells_emit};\n"
@@ -321,21 +362,29 @@ def main():
         f"  for (let k = 0; k < bin.length; k++) u8[k] = bin.charCodeAt(k);\n"
         f"  return u8;\n"
         f"}})();\n"
-        f"const cell_default_colors = {json.dumps(cell_color_default)};\n"
         f"let gene_default_colors = {json.dumps(gene_color_default)};\n"
         f"const _cell_subtype_cats = {json.dumps(_cs_cats)};\n"
         f"const _cell_subtype_idx_b64 = {json.dumps(_cs_idx_b64)};\n"
-        "const cell_subtype = (function() {\n"
-        "  const bin = atob(_cell_subtype_idx_b64);\n"
-        "  const out = new Array(bin.length);\n"
-        "  for (let k = 0; k < bin.length; k++) out[k] = _cell_subtype_cats[bin.charCodeAt(k)];\n"
+        "function _decodeSubtype(cats, b64) {\n"
+        "  const bin = atob(b64); const out = new Array(bin.length);\n"
+        "  for (let k = 0; k < bin.length; k++) out[k] = cats[bin.charCodeAt(k)];\n"
         "  return out;\n"
-        "})();\n"
+        "}\n"
+        "let cell_subtype = _decodeSubtype(_cell_subtype_cats, _cell_subtype_idx_b64);\n"
+        f"let subtype_palette = {json.dumps(subtype_palette)};\n"
+        "let cell_default_colors = cell_subtype.map(s => subtype_palette[s] || '#888888');\n"
+        + (f"const SUBTYPE_LEVELS = {{"
+           f"{json.dumps(DEFAULT_LEVEL)}: {{cats: {json.dumps(_cs_cats)}, "
+           f"idx: {json.dumps(_cs_idx_b64)}, palette: {json.dumps(subtype_palette)}}}, "
+           f"{json.dumps(ALT_LEVEL)}: {{cats: {json.dumps(_cs_cats_alt)}, "
+           f"idx: {json.dumps(_cs_idx_alt_b64)}, palette: {json.dumps(palette_alt)}}}}};\n"
+           f"let activeLevel = {json.dumps(DEFAULT_LEVEL)};\n"
+           if DUAL_LEVEL else
+           "const SUBTYPE_LEVELS = {}; let activeLevel = null;\n") +
         f"const cell_region = {json.dumps(cell_region_list)};\n"
         f"const region_options = {json.dumps(region_options)};\n"
         f"const cell_age = {json.dumps(cell_age_list)};\n"
         f"const cell_layer = {json.dumps(cell_layer_list)};\n"
-        f"const subtype_palette = {json.dumps(subtype_palette)};\n"
         f"const gene_name    = {json.dumps(gene_names)};\n"
         f"const gene_in_panel = {json.dumps(panel_mask_list)};\n"
         f"const gene_mean    = {json.dumps([round(float(v),3) for v in mean_expr])};\n"
@@ -471,6 +520,11 @@ h2 {{ margin: 0 0 2px 0; }}
                                 border-color: #1b5e20; }}
 .age-toggle .ag-btn:not(.active) {{ opacity: 0.5; text-decoration: line-through; }}
 
+/* Granularity panels: only the active resolution is laid out; `display:contents`
+   keeps the group divs as direct flex children of the controls row. */
+.subt-panel {{ display: none; }}
+.subt-panel.active {{ display: contents; }}
+#level-toggle {{ font-weight: 700; }}
 .subt-group {{ display: flex; flex-direction: column; gap: 2px;
                 padding: 4px 6px; border: 1px solid #e0c79a; background: #fffaf0;
                 border-radius: 4px; }}
@@ -570,6 +624,7 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
     {subtype_checkbox_html}
     <button id="subt-all" title="Check every subtype">all</button>
     <button id="subt-none" title="Uncheck every subtype">none</button>
+    {level_toggle_html}
     <span class="lin-sep">|</span>
     <button class="lin-btn" data-lin="MGE" title="Select MGE-derived subclasses: Pvalb (incl chandelier) + Sst (incl Chodl)">+MGE</button>
     <button class="lin-btn" data-lin="CGE" title="Select CGE-derived subclasses: Vip + Lamp5 + Sncg + Serpinf1 (+ Lamp5 Lhx6)">+CGE</button>
@@ -1312,20 +1367,47 @@ if (layerBtn) {{
 // Subtype-subset diffmap recompute (Laplacian eigenmap)
 // ============================================================================
 const subtypeCheckboxes = Array.from(document.querySelectorAll('.subt-chk input[type="checkbox"]'));
+// Checkboxes belonging to the currently-active granularity panel. For
+// single-level cohorts the one panel is always active, so this == all boxes.
+function activeCbs() {{
+  return subtypeCheckboxes.filter(cb => {{
+    const p = cb.closest('.subt-panel');
+    return !p || p.classList.contains('active');
+  }});
+}}
+// Granularity toggle (dual-resolution cohorts): switch the subtype menu AND the
+// per-cell subtype labels/colours between the finer and coarser level.
+const levelToggleBtn = document.getElementById('level-toggle');
+if (levelToggleBtn) {{
+  const def = levelToggleBtn.dataset.default, alt = levelToggleBtn.dataset.alt;
+  levelToggleBtn.addEventListener('click', () => {{
+    activeLevel = (activeLevel === def) ? alt : def;
+    document.querySelectorAll('.subt-panel').forEach(p =>
+      p.classList.toggle('active', p.dataset.level === activeLevel));
+    const lvl = SUBTYPE_LEVELS[activeLevel];
+    cell_subtype = _decodeSubtype(lvl.cats, lvl.idx);
+    subtype_palette = lvl.palette;
+    cell_default_colors = cell_subtype.map(s => subtype_palette[s] || '#888888');
+    activeCbs().forEach(cb => cb.checked = true);
+    levelToggleBtn.textContent = '▸ show ' + (activeLevel === def ? alt : def) + ' level';
+    invalidateGeneStruct();
+    document.getElementById('reset-btn').click();
+  }});
+}}
 document.querySelectorAll('.grp-toggle').forEach(btn => {{
   btn.addEventListener('click', () => {{
     const grp = btn.dataset.grp;
     const want = btn.dataset.action === 'all';
-    subtypeCheckboxes.forEach(cb => {{
+    activeCbs().forEach(cb => {{
       if (cb.dataset.grp === grp) cb.checked = want;
     }});
   }});
 }});
 document.getElementById('subt-all').addEventListener('click', () => {{
-  subtypeCheckboxes.forEach(cb => cb.checked = true);
+  activeCbs().forEach(cb => cb.checked = true);
 }});
 document.getElementById('subt-none').addEventListener('click', () => {{
-  subtypeCheckboxes.forEach(cb => cb.checked = false);
+  activeCbs().forEach(cb => cb.checked = false);
 }});
 const LINEAGE_SUBCLASSES = {{
   MGE: new Set(['Pvalb', 'Pvalb chandelier', 'Sst', 'Sst Chodl']),
@@ -1335,14 +1417,14 @@ const LINEAGE_SUBCLASSES = {{
 document.querySelectorAll('.lin-btn').forEach(btn => {{
   btn.addEventListener('click', () => {{
     const wanted = LINEAGE_SUBCLASSES[btn.dataset.lin] || new Set();
-    subtypeCheckboxes.forEach(cb => {{
+    activeCbs().forEach(cb => {{
       if (wanted.has(cb.dataset.grp)) cb.checked = true;
     }});
   }});
 }});
 function selectedSubtypes() {{
   const out = new Set();
-  subtypeCheckboxes.forEach(cb => {{ if (cb.checked) out.add(cb.dataset.sub); }});
+  activeCbs().forEach(cb => {{ if (cb.checked) out.add(cb.dataset.sub); }});
   return out;
 }}
 

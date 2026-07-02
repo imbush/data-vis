@@ -79,6 +79,26 @@ GROUPS = {
         runtime_exclude=(),
         exclude_cells=(),
     ),
+    # Wu/Fishell 2026 (GSE272706) P20 cortical interneurons, Control vs Fezf2-KO.
+    # snRNA-seq of Dlx5/6-Cre;Sun1-eGFP-sorted INs; processed by fezf2_pipeline.py
+    # (Scrublet + QC + cluster-level label transfer from the Tasic AllInhib ref).
+    # `dissected_region` carries the GENOTYPE (Control / Fezf2-KO) so the recompute
+    # explorers' Region toggle subsets/recomputes per genotype (relabelled
+    # "Genotype" in the Fezf2 HTML post-build). cell_cluster = cell_subclass, so
+    # the subtype checkboxes are the five interneuron subclasses.
+    'Fezf2': dict(
+        cache=None,
+        anndata_path=os.path.join(ROOT, 'data', 'fezf2_fishell',
+                                  'p20_cIN_labeled.h5ad'),
+        subclasses=('Pvalb', 'Sst', 'Vip', 'Lamp5', 'Sncg'),
+        cache_subtype_prefix=None,
+        cache_outliers=(),
+        runtime_exclude=(),
+        exclude_cells=(),
+        # 30k cells -> trim the broad gene pool so the HTML clears GitHub's 100 MB cap.
+        broad_max_genes=900,
+        viz_nav_overrides={'archetype': '{slug}_nmf_recompute_explorer_4d.html'},
+    ),
     # Union of every GABAergic subclass we've fitted explorers for. No cache —
     # HVG list is derived as the union of the 5 per-subclass cached HVG lists.
     # Outlier subtypes are kept (the recompute UI lets the user deselect them).
@@ -1196,6 +1216,15 @@ def compute_or_load_proj_full(force=False):
     gene_names_full = list(a.var_names)
     subs        = np.array(a.obs['cell_cluster'].astype(str))
     cell_subcls = np.array(a.obs['cell_subclass'].astype(str))
+    # Optional marker-renamed subtype labels at two taxonomy resolutions (only
+    # the Gao dev-VIS cohort carries these; see build_devvis_marker_names.py).
+    # When present the recompute UI offers a cluster/subcluster granularity
+    # toggle; otherwise it falls back to the single `subs` level. Aligned to
+    # `subs` cell order since they come from the same filtered `a`.
+    subs_named_cluster = (np.array(a.obs['cell_cluster_named'].astype(str))
+                          if 'cell_cluster_named' in a.obs.columns else None)
+    subs_named_subcluster = (np.array(a.obs['cell_subcluster_named'].astype(str))
+                             if 'cell_subcluster_named' in a.obs.columns else None)
     # Per-cell region label. Optional — some anndatas (e.g. v1-only) only have
     # one value, in which case the recompute UI hides the region toggle.
     cell_region = (np.array(a.obs['dissected_region'].astype(str))
@@ -1226,7 +1255,12 @@ def compute_or_load_proj_full(force=False):
     for gl in GENE_SETS.values():
         curated_union.update(gl)
     curated_mask = np.array([g in curated_union for g in gene_names_full])
-    rank_idx = np.argsort(mean_full)[::-1][:BROAD_MAX_GENES]
+    # Per-group cap on the "broad" (top-mean) gene pool. Large cohorts (e.g.
+    # Fezf2, 30k cells) blow past GitHub's 100 MB file cap with the default
+    # 3000; trimming the broad pool keeps every panel/curated/marker gene and
+    # only drops low-expressed extras, so gene search is barely affected.
+    broad_max = GROUP.get('broad_max_genes', BROAD_MAX_GENES)
+    rank_idx = np.argsort(mean_full)[::-1][:broad_max]
     top_mask = np.zeros(len(mean_full), dtype=bool); top_mask[rank_idx] = True
     keep_mask = top_mask | panel_flag | curated_mask
 
@@ -1246,6 +1280,8 @@ def compute_or_load_proj_full(force=False):
         std_expr=std_keep.astype(np.float32),
         X_keep=X_keep,
         subs=subs,
+        subs_named_cluster=subs_named_cluster,
+        subs_named_subcluster=subs_named_subcluster,
         cell_subclass=cell_subcls,
         cell_region=cell_region,
         cell_donor=cell_donor,
