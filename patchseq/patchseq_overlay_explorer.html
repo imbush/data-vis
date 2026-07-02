@@ -54,7 +54,7 @@ h2 { margin: 0 0 4px 0; font-size: 18px; }
 <h2>Tasic 2018 V1 inhibitory · Allen Patch-seq overlay</h2>
 <div class="hint">
   Patch-seq cells (n=<b>4270</b> mapped to Tasic AIT2.3.1) projected onto the
-  Tasic AllInhib SVD basis. Background: Tasic cells (grey). Hover any coloured dot
+  Tasic AllInhib PCA basis. Background: Tasic cells (grey). Hover any coloured dot
   for ephys session, dendrite type, soma depth, dissection structure.
 </div>
 
@@ -101,8 +101,8 @@ function makePlot() {
   };
   Plotly.newPlot('plot', [tasicTrace, psTrace], {
     margin: { l: 0, r: 0, b: 0, t: 0 },
-    scene: { xaxis: { title: 'SVD1' }, yaxis: { title: 'SVD2' },
-              zaxis: { title: 'SVD3' }, aspectmode: 'cube' },
+    scene: { xaxis: { title: 'PCA1' }, yaxis: { title: 'PCA2' },
+              zaxis: { title: 'PCA3' }, aspectmode: 'cube' },
   }, { responsive: true, displayModeBar: true });
 }
 makePlot();
@@ -431,7 +431,7 @@ recolor('subclass');
   }
 
   // Intercept clicks on the cross-explorer View: nav links and inject the
-  // current UI state into the target URL hash so switching SVD ↔ UMAP ↔
+  // current UI state into the target URL hash so switching PCA ↔ UMAP ↔
   // diffmap ↔ NMF keeps the subtype subset, gene filter, region toggle,
   // metabolism slider, etc.
   function instrumentVizNav() {

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Gene-association explorer.
 
-Same SVD biplot as the marker / recompute explorers, but built around a single
+Same PCA biplot as the marker / recompute explorers, but built around a single
 focus gene instead of two cell groups. Pick (search) a gene and the tool ranks
 every other gene by how strongly it co-varies with it across cells:
   - Pearson correlation (signed) — positive / negative linear association
@@ -71,7 +71,7 @@ def main():
     qc_ngenes = np.asarray(qc['n_genes'], dtype=np.float64)
     qc_ribo   = np.asarray(qc['pct_ribo'], dtype=np.float64)
 
-    # ---- SVD biplot (full cohort) ------------------------------------------
+    # ---- PCA biplot (full cohort) ------------------------------------------
     Xp = X_keep[:, in_panel]
     Zp = prep_cols(Xp)
     U, S, Vt = np.linalg.svd(Zp, full_matrices=False)
@@ -79,7 +79,7 @@ def main():
     cell_scores = U * S
     Zall = prep_cols(X_keep)
     gene_load3 = (Zall.T @ U) / S
-    print(f'  geneassoc: SVD on {Xp.shape[0]} cells × {int(in_panel.sum())} panel genes')
+    print(f'  geneassoc: PCA on {Xp.shape[0]} cells × {int(in_panel.sum())} panel genes')
 
     def center_cube(M):
         # centre the cloud on its (robust) median so the scene origin sits in the
@@ -473,8 +473,8 @@ or <b>mutual information</b> (any dependence). Hover a result to recolour the ce
   <div class="controls-row">
     <label class="rank-label" title="Number of singular components to keep in the recompute (1–3). Lower rank collapses axes: rank=2 puts all points on the PC1×PC2 plane (z=0); rank=1 puts them on the PC1 axis.">rank
       <input id="rank-input" type="number" min="1" max="3" value="3" step="1"></label>
-    <button id="recompute-btn" title="Refit SVD on the panel HVG, using only the active (checked-subtype, region/age-allowed) cells.">Replot on subtypes (panel HVG)</button>
-    <button id="recompute-genes-btn" title="Refit SVD using only the genes currently shown in the right biplot (gene set ∩ mean/std ∩ recoverability filters), on the active cells.">Replot with shown genes</button>
+    <button id="recompute-btn" title="Refit PCA on the panel HVG, using only the active (checked-subtype, region/age-allowed) cells.">Replot on subtypes (panel HVG)</button>
+    <button id="recompute-genes-btn" title="Refit PCA using only the genes currently shown in the right biplot (gene set ∩ mean/std ∩ recoverability filters), on the active cells.">Replot with shown genes</button>
     <span id="recompute-status" style="margin-left:8px;"></span>
   </div>
 </div>
@@ -573,7 +573,7 @@ const INVIS = 'rgba(0,0,0,0)';
 let metric = 'corr';         // corr | mi
 let geneActive = new Array(N_GENES).fill(true);
 let assoc = null;            // Float64Array of association values to focusGene
-// readVal(i,j): log-CPM expression the SVD / PCA needs.
+// readVal(i,j): log-CPM expression the PCA / PCA needs.
 function readVal(i, j){ return expr_matrix[i*N_GENES+j] / EXPR_SCALE; }
 
 // ---- palettes --------------------------------------------------------------
@@ -609,9 +609,9 @@ function refreshTitles(){
   let cl = colorMode==='qc' ? qcLabel
         : colorMode==='gene' ? (gene_name[activeGene]+' expression')
         : (colorMode==='subtype'?'subtype':(colorMode==='counts'?'total counts':(colorMode==='genes'?'genes detected':(colorMode==='ribo'?'% ribosomal':'layer'))));
-  if (ct) ct.innerHTML='Cells on <b>SVD</b> axes · coloured by <b>'+cl+'</b> · n='+getSel().length.toLocaleString();
+  if (ct) ct.innerHTML='Cells on <b>PCA</b> axes · coloured by <b>'+cl+'</b> · n='+getSel().length.toLocaleString();
   const gl = focusActive() ? (metric==='corr'?'correlation to ':'mutual info with ')+focusLabel() : 'strongest PC';
-  if (gt) gt.innerHTML='Genes on <b>SVD</b> axes · coloured by <b>'+gl+'</b>';
+  if (gt) gt.innerHTML='Genes on <b>PCA</b> axes · coloured by <b>'+gl+'</b>';
 }
 
 // ---- cell colouring --------------------------------------------------------
@@ -1027,10 +1027,10 @@ function renderAssocList(){
 }
 
 // ============================================================================
-// In-browser SVD refit + density + gene-structure (ported from the recompute app)
+// In-browser PCA refit + density + gene-structure (ported from the recompute app)
 // ============================================================================
 function powerIterTopK(A, K, maxIter, tol) {
-  // A: m x n (array of Float64Array rows). Returns {U, S, V} for top-K SVD via
+  // A: m x n (array of Float64Array rows). Returns {U, S, V} for top-K PCA via
   // power iteration with deflation. U: K arrays of length m, V: K arrays length n.
   maxIter = maxIter || 80; tol = tol || 1e-7;
   const m = A.length, n = A[0].length;
@@ -1076,7 +1076,7 @@ function powerIterTopK(A, K, maxIter, tol) {
   return {U, S, V};
 }
 
-function recomputeSVD(basisIdx, basisLabel) {
+function recomputePCA(basisIdx, basisLabel) {
   // Refit the biplot on the active cells × a gene basis (panel HVG by default,
   // or the currently-shown genes). Updates both plots' positions, the per-cell /
   // per-gene dominant-pole colors and the 6 pole labels. Re-runs the association
@@ -1214,14 +1214,14 @@ function recomputeSVD(basisIdx, basisLabel) {
 document.getElementById('recompute-btn').addEventListener('click', () => {
   const btn = document.getElementById('recompute-btn');
   btn.disabled = true; recomputeStatus.textContent = 'computing…';
-  setTimeout(() => { try { recomputeSVD(panel_idx, 'panel HVG'); } finally { btn.disabled = false; } }, 30);
+  setTimeout(() => { try { recomputePCA(panel_idx, 'panel HVG'); } finally { btn.disabled = false; } }, 30);
 });
 document.getElementById('recompute-genes-btn').addEventListener('click', () => {
   const visible = visibleGeneIdx();
   if (visible.length < 3) { recomputeStatus.innerHTML = '<span style="color:#c00">need &ge;3 considered genes (got '+visible.length+'). Loosen the filters.</span>'; return; }
   const btn = document.getElementById('recompute-genes-btn');
   btn.disabled = true; recomputeStatus.textContent = 'computing on ' + visible.length + ' shown genes…';
-  setTimeout(() => { try { recomputeSVD(visible, 'shown genes'); } finally { btn.disabled = false; } }, 30);
+  setTimeout(() => { try { recomputePCA(visible, 'shown genes'); } finally { btn.disabled = false; } }, 30);
 });
 
 // ---- "Number of similar cells": local density in the CURRENT gene space -----

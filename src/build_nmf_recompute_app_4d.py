@@ -1,15 +1,15 @@
 #!/usr/bin/env python
-"""4-archetype NMF explorer with in-browser NMF recompute on a subset of cells/genes.
+"""4-NMF explorer with in-browser NMF recompute on a subset of cells/genes.
 
 Same controls layout as build_svd_recompute_app_3d.py (subtype checkboxes,
 gene filter sliders, recompute buttons, sample/region toggles, heatmap, GO
 bars, copy-link) but the embedding is NMF: cells live inside a 3D
-tetrahedron whose vertices are 4 archetypes (W rows are normalised to sum
+tetrahedron whose vertices are 4 NMF factors (W rows are normalised to sum
 to 1 then barycentric-projected to cartesian), and genes live inside a
 second tetrahedron (H column barycentrics).
 
 Recompute uses multiplicative-update NMF (Lee & Seung) in pure JS — same
-one-click mutation pattern as the SVD recompute, no server / Pyodide.
+one-click mutation pattern as the PCA recompute, no server / Pyodide.
 
 Usage:  python build_nmf_recompute_app_4d.py [GROUP]   # default: base GROUP_NAME
 Output: notebooks/{group}_nmf_recompute_explorer_4d.html
@@ -123,12 +123,12 @@ def main():
     mean_pct_ribo = float(qc_ribo.mean())
 
     # ---- initial NMF on the panel HVG matrix (non-negative log-CPM).
-    # K=4 archetypes; W is n_cells × K (cell archetype loadings), H is K × n_panel
-    # (archetype gene profiles). For the full broader-gene matrix we then NNLS-
-    # project: H_all is K × n_genes (each gene's archetype profile).
+    # K=4 NMF factors; W is n_cells × K (cell NMF factor loadings), H is K × n_panel
+    # (NMF factor gene profiles). For the full broader-gene matrix we then NNLS-
+    # project: H_all is K × n_genes (each gene's NMF factor profile).
     Xp = X_keep[:, in_panel]                      # n × n_panel, non-negative
     W, H_panel = nmf_fit(Xp, K_ARCH)
-    # Project broader gene matrix onto archetype space: H_all = (W^+ X_all)
+    # Project broader gene matrix onto NMF factor space: H_all = (W^+ X_all)
     # via NNLS for non-negativity (one solve per gene).
     from scipy.optimize import nnls
     H_all = np.zeros((K_ARCH, n_genes), dtype=np.float32)
@@ -137,17 +137,17 @@ def main():
     print(f'  initial NMF on {Xp.shape[0]} cells × {Xp.shape[1]} panel genes (K={K_ARCH})')
 
     cell_xyz = barycentric_to_xyz(W)            # n × 3 inside tetrahedron
-    # Gene barycentrics: H column normalised — each gene has K archetype weights.
+    # Gene barycentrics: H column normalised — each gene has K NMF factor weights.
     gene_xyz = barycentric_to_xyz(H_all.T)      # n_genes × 3
-    # Dominant-archetype index per cell / gene (for default colouring)
+    # Dominant-NMF factor index per cell / gene (for default colouring)
     cell_arch = W.argmax(1)
     gene_arch = H_all.argmax(0)
 
-    # Vertex labels: top panel gene per archetype (peak gene)
+    # Vertex labels: top panel gene per NMF factor (peak gene)
     panel_genes_list = [g for g, k in zip(gene_names, in_panel) if k]
     vertex_top = [panel_genes_list[int(np.argmax(H_panel[k]))] for k in range(K_ARCH)]
 
-    # Top genes per archetype for GO enrichment: top-N panel genes by H_panel weight.
+    # Top genes per NMF factor for GO enrichment: top-N panel genes by H_panel weight.
     GO_TOP_PER_AXIS = 60
     top_genes_per_axis = []
     for k in range(K_ARCH):
@@ -164,10 +164,10 @@ def main():
     gene_color_default = [ARCH_COLORS[int(k)] for k in gene_arch]
     cell_dom_color     = [ARCH_COLORS[int(k)] for k in cell_arch]
     gene_dom_color     = gene_color_default
-    # Per-cell / per-gene archetype loadings (K values each, for hover/heatmap order).
+    # Per-cell / per-gene NMF factor loadings (K values each, for hover/heatmap order).
     cell_load = W.round(4).tolist()             # n × K
     gene_load = H_all.T.round(4).tolist()       # n_genes × K
-    # cell_score / gene_loading reuse the SVD-recompute JS names; they hold the
+    # cell_score / gene_loading reuse the PCA-recompute JS names; they hold the
     # full K-vector now (K=4 instead of 3).
     cell_scores = W                             # alias for consistency below
     gene_load3 = H_all.T                        # alias for consistency below
@@ -183,7 +183,7 @@ def main():
     # ---- figure construction: tetrahedron with 4 vertex markers, no cube axes.
     POLE = 1.22                                # vertex label radius
     # axis_ends still has 6 slots so JS code that indexes them stays compatible:
-    # positions 0–3 are the 4 archetype vertices, positions 4–5 hidden.
+    # positions 0–3 are the 4 NMF factor vertices, positions 4–5 hidden.
     axis_ends = np.zeros((6, 3))
     axis_ends[:K_ARCH] = TET_V * POLE
 
@@ -286,7 +286,7 @@ def main():
 
     gx, gy, gz = (np.round(gene_xyz[:, k], 4).tolist() for k in range(3))
 
-    # gene-set masks (same as the SVD script)
+    # gene-set masks (same as the PCA script)
     panel_mask_list = in_panel.tolist()
     set_masks  = {'all': [True]*n_genes, 'panel': panel_mask_list}
     set_counts = {'all': n_genes,        'panel': n_panel_disp}
@@ -395,7 +395,7 @@ def main():
         f"let gene_dom_color = {json.dumps(gene_dom_color)};\n"
         f"let cell_active = Array({n_cells}).fill(true);\n"
         # NMF tetrahedron padding: emit 6-slot arrays so legacy JS that indexes
-        # 0..5 (signed-poles from the SVD template) still works. Slots 4-5 are
+        # 0..5 (signed-poles from the PCA template) still works. Slots 4-5 are
         # always invisible / empty for NMF.
         f"let pole_top = {json.dumps(vertex_top + ['', ''])};\n"
         f"const panel_idx = {json.dumps(panel_idx)};\n"
@@ -635,7 +635,7 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
 <div class="wrap">
 <h2>{base.cohort_title(GROUP_NAME)}</h2>
 <div class="hint">
-<b>Pick which subtypes you want to fit the archetypes to</b>, then click <b>Replot</b>.
+<b>Pick which subtypes you want to fit the NMF factors to</b>, then click <b>Replot</b>.
 </div>
 
 <div class="ctrl-box">
@@ -696,7 +696,7 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
       Metabolism filter <span id="ribo-corr-label">|r|≤1.00</span>
       <input type="range" id="ribo-corr-slider" min="0.10" max="1.00" step="0.05" value="1.00" style="vertical-align:middle; width:120px;">
       <span id="ribo-corr-count" style="color:#888;"></span></label>
-    <label class="ribo-toggle" title="Subtract each gene's linear fit on pct_ribo before the recompute. Equivalent to projecting expression onto the subspace orthogonal to %ribo, so SVD/UMAP/diffmap see only the residual (non-metabolic) variance. NMF clips negative residuals to 0.">
+    <label class="ribo-toggle" title="Subtract each gene's linear fit on pct_ribo before the recompute. Equivalent to projecting expression onto the subspace orthogonal to %ribo, so PCA/UMAP/diffmap see only the residual (non-metabolic) variance. NMF clips negative residuals to 0.">
       <input type="checkbox" id="regress-ribo"> Regress out %ribo
     </label>
     <span class="label" style="margin-left:14px;">Visible:</span>
@@ -741,7 +741,7 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
         <button class="order-btn" data-axis="1">A2</button>
         <button class="order-btn" data-axis="2">A3</button>
         <button class="order-btn" data-axis="3">A4</button>
-        <button class="order-btn" data-axis="-1" title="Order cells by dominant archetype then by max-archetype weight — a 'trajectory through archetypes' pseudotime.">Pseudotime</button>
+        <button class="order-btn" data-axis="-1" title="Order cells by dominant NMF factor then by max-NMF factor weight — a 'trajectory through NMF factors' pseudotime.">Pseudotime</button>
         <label class="group-by-toggle"><input type="checkbox" id="group-by-celltype"> group by cell type first</label>
       </span>
     </div>
@@ -774,9 +774,9 @@ const DEFAULT_LOAD_COLORS = ['#e0e0e0','#e0e0e0','#e0e0e0','#e0e0e0','#e0e0e0','
 let lastHoveredCell = null, lastHoveredGene = null;
 
 // ---- dynamic plot-box titles --------------------------------------------
-const VIZ_METHOD = 'NMF archetype';
+const VIZ_METHOD = 'NMF';
 let titleCellColor = 'subtype';
-let titleGeneRef   = 'dominant archetype';
+let titleGeneRef   = 'dominant NMF factor';
 let titleGeneN     = {n_panel_disp};
 function activeCellCount() {{
   let n = 0; for (let i = 0; i < cell_active.length; i++) if (cell_active[i]) n++; return n;
@@ -856,8 +856,8 @@ document.getElementById('reset-btn').addEventListener('click', function() {{
   lastHoveredCell = null; lastHoveredGene = null;
   clearHeatmapOverlay();
   clearLineGraph();
-  status.innerHTML = 'Reset. Hover a cell or gene to colour by expression and reveal archetype weights.'; clearColorKey();
-  titleCellColor = 'subtype'; titleGeneRef = 'dominant archetype'; refreshTitles();
+  status.innerHTML = 'Reset. Hover a cell or gene to colour by expression and reveal NMF factor weights.'; clearColorKey();
+  titleCellColor = 'subtype'; titleGeneRef = 'dominant NMF factor'; refreshTitles();
 }});
 
 let activeSet = 'panel';
@@ -972,7 +972,7 @@ document.getElementById('search-clear').addEventListener('click', function() {{
 }});
 
 function powerIterTopK(A, K, maxIter, tol) {{
-  // A: m x n (array of Float64Array rows). Returns {{U, S, V}} for top-K SVD via
+  // A: m x n (array of Float64Array rows). Returns {{U, S, V}} for top-K PCA via
   // power iteration with deflation. U: K arrays of length m, V: K arrays length n.
   maxIter = maxIter || 80; tol = tol || 1e-7;
   const m = A.length, n = A[0].length;
@@ -1027,7 +1027,7 @@ function powerIterTopK(A, K, maxIter, tol) {{
 
 // ---- Gene-structure (recoverability R^2) ---------------------------------
 // Embed the selected cells into a K-dim PCA latent space (eigendecomposition of
-// the panel covariance, equivalent to SVD but cheaper for large K), then score
+// the panel covariance, equivalent to PCA but cheaper for large K), then score
 // each gene by the fraction of its variance recoverable from that embedding:
 //   R^2_j = sum_k (u_k . z_j)^2 / ||z_j||^2   (u_k = orthonormal cell-space PCs,
 //   z_j = gene j z-scored over the selected cells). Computed entirely client-side.
@@ -1447,7 +1447,7 @@ if (layerBtn) {{
 }}
 
 // ============================================================================
-// Subtype-subset SVD recompute
+// Subtype-subset PCA recompute
 // ============================================================================
 const subtypeCheckboxes = Array.from(document.querySelectorAll('.subt-chk input[type="checkbox"]'));
 // Per-subclass group-level all/none buttons (in the AllInhib cohort + future
@@ -1807,7 +1807,7 @@ function recomputeNMF(basisIdx, basisLabel) {{
                       +h[2].toFixed(4), +h[3].toFixed(4)];
   }}
 
-  // Dominant-archetype index per cell / gene
+  // Dominant-NMF factor index per cell / gene
   function domArch(w) {{
     let k = 0, mx = w[0];
     for (let i = 1; i < K_ARCH; i++) if (w[i] > mx) {{ mx = w[i]; k = i; }}
@@ -1823,7 +1823,7 @@ function recomputeNMF(basisIdx, basisLabel) {{
     newGeneDom[j] = POLE_COLORS_[domArch(newGeneLoad[j])];
   }}
 
-  // Update vertex-label "top gene per archetype": from H[k,:] argmax over basis.
+  // Update vertex-label "top gene per NMF factor": from H[k,:] argmax over basis.
   const newPoleTop = ['', '', '', '', '', ''];
   for (let k = 0; k < K_ARCH; k++) {{
     let bestIdx = 0, best = -Infinity;
@@ -1842,7 +1842,7 @@ function recomputeNMF(basisIdx, basisLabel) {{
   cell_active = newCellActive;
   pole_top = newPoleTop;
 
-  // New gene_default_colors (by dominant archetype)
+  // New gene_default_colors (by dominant NMF factor)
   gene_default_colors = newGeneDom.slice();
 
   // ---- update both plots ----
@@ -1853,7 +1853,7 @@ function recomputeNMF(basisIdx, basisLabel) {{
   // 2. gene points: positions + colors
   Plotly.restyle(genePlot, {{'marker.color':[gene_default_colors]}}, [POINTS_TRACE]);
   applyGeneFilter();   // applies the current mean/std sliders → positions for visible genes
-  // 3. vertex labels (archetypes): update text on both plots
+  // 3. vertex labels (NMF factors): update text on both plots
   const newPoleLab = [];
   for (let p = 0; p < 6; p++) newPoleLab.push(POLE_NAMES_[p] || '');
   Plotly.restyle(cellPlot, {{text:[newPoleLab], hovertext:[newPoleLab]}}, [VERTEX_TRACE]);
@@ -1863,7 +1863,7 @@ function recomputeNMF(basisIdx, basisLabel) {{
   Plotly.restyle(genePlot, {{'marker.color':[DEFAULT_LOAD_COLORS]}}, [LOADING_TRACE]);
   // 5. clear gene search highlight
   Plotly.restyle(genePlot, {{x:[[null]], y:[[null]], z:[[null]]}}, [HIGHLIGHT_TRACE]);
-  // 6. refresh the archetype legend in the page footer
+  // 6. refresh the NMF factor legend in the page footer
   document.getElementById('pole-legend').innerHTML = newPoleTop.slice(0, K_ARCH).map((g, k) =>
     `<span style="display:inline-block;width:10px;height:10px;background:${{POLE_COLORS_[k]}};` +
     `margin-right:4px;border-radius:50%;"></span> ${{POLE_NAMES_[k]}} (${{g}}) &nbsp;&nbsp;`).join('');
@@ -1875,7 +1875,7 @@ function recomputeNMF(basisIdx, basisLabel) {{
     + 'peaks: ' + newPoleTop.slice(0, K_ARCH).map((g, k) =>
         POLE_NAMES_[k] + '=' + g).join(', ');
   lastHoveredCell = null; lastHoveredGene = null;
-  // 8. heatmap reflects the new archetype ordering on the new active cell set
+  // 8. heatmap reflects the new NMF factor ordering on the new active cell set
   renderHeatmap();}}
 
 document.getElementById('recompute-btn').addEventListener('click', () => {{
@@ -1961,9 +1961,9 @@ function renderHeatmap() {{
   let activeIdx = [];
   for (let i = 0; i < cell_active.length; i++) if (cell_active[i]) activeIdx.push(i);
   const axis = heatmapOrderAxis;
-  // Pseudotime for NMF: cells ordered by dominant-archetype index then by
-  // max-archetype weight within that archetype — i.e. a "trajectory through
-  // archetypes A1 → A2 → A3 → A4". Encoded into a single sort key as
+  // Pseudotime for NMF: cells ordered by dominant-NMF factor index then by
+  // max-NMF factor weight within that NMF factor — i.e. a "trajectory through
+  // NMF factors A1 → A2 → A3 → A4". Encoded into a single sort key as
   // (domIdx + 1 - W_max), so dom=0 cells with high W_max come first.
   const sortKey = (axis === -1)
     ? (i => {{ let m = 0, k = 0; const s = cell_score[i];

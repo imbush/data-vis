@@ -316,12 +316,12 @@ footer.cite a { color: var(--earth-dark); }
 <div class="wrap">
 <h2>Inhibitory Neuron Atlas — CGE lineage</h2>
 <div class="hint">
-<b>Pick which subtypes you want to fit the archetypes to</b>, then click <b>Replot</b>.
+<b>Pick which subtypes you want to fit the NMF factors to</b>, then click <b>Replot</b>.
 </div>
 
 <div class="ctrl-box">
   <div class="ctrl-box-title">Plotting Method</div>
-  <div class="controls-row"><nav class="viz-nav"><span class="viz-nav-label">view:</span><a class="viz-nav-btn active" href="allinhib_cge_nmf_recompute_explorer_4d.html"><span class="viz-nav-glyph" style="color:#2ca02c">▲</span> Archetype</a><a class="viz-nav-btn" href="allinhib_cge_svd_recompute_explorer_3d.html"><span class="viz-nav-glyph" style="color:#1f77b4">◆</span> SVD</a><a class="viz-nav-btn" href="allinhib_cge_umap_recompute_explorer_3d.html"><span class="viz-nav-glyph" style="color:#d62728">●</span> UMAP</a><a class="viz-nav-btn" href="allinhib_cge_diffmap_recompute_explorer_3d.html"><span class="viz-nav-glyph" style="color:#9467bd">◐</span> Diffmap</a><a class="viz-nav-btn" href="allinhib_cge_marker_explorer_3d.html"><span class="viz-nav-glyph" style="color:#875e38">⊟</span> Marker finder</a><a class="viz-nav-btn" href="allinhib_cge_geneassoc_explorer_3d.html"><span class="viz-nav-glyph" style="color:#4a7a6f">⊞</span> Gene associations</a></nav></div>
+  <div class="controls-row"><nav class="viz-nav"><span class="viz-nav-label">view:</span><a class="viz-nav-btn active" href="allinhib_cge_nmf_recompute_explorer_4d.html"><span class="viz-nav-glyph" style="color:#2ca02c">▲</span> NMF</a><a class="viz-nav-btn" href="allinhib_cge_svd_recompute_explorer_3d.html"><span class="viz-nav-glyph" style="color:#1f77b4">◆</span> PCA</a><a class="viz-nav-btn" href="allinhib_cge_umap_recompute_explorer_3d.html"><span class="viz-nav-glyph" style="color:#d62728">●</span> UMAP</a><a class="viz-nav-btn" href="allinhib_cge_diffmap_recompute_explorer_3d.html"><span class="viz-nav-glyph" style="color:#9467bd">◐</span> Diffmap</a><a class="viz-nav-btn" href="allinhib_cge_marker_explorer_3d.html"><span class="viz-nav-glyph" style="color:#875e38">⊟</span> Marker finder</a><a class="viz-nav-btn" href="allinhib_cge_geneassoc_explorer_3d.html"><span class="viz-nav-glyph" style="color:#4a7a6f">⊞</span> Gene associations</a></nav></div>
 </div>
 
 <div class="ctrl-box">
@@ -377,7 +377,7 @@ footer.cite a { color: var(--earth-dark); }
       Metabolism filter <span id="ribo-corr-label">|r|≤1.00</span>
       <input type="range" id="ribo-corr-slider" min="0.10" max="1.00" step="0.05" value="1.00" style="vertical-align:middle; width:120px;">
       <span id="ribo-corr-count" style="color:#888;"></span></label>
-    <label class="ribo-toggle" title="Subtract each gene's linear fit on pct_ribo before the recompute. Equivalent to projecting expression onto the subspace orthogonal to %ribo, so SVD/UMAP/diffmap see only the residual (non-metabolic) variance. NMF clips negative residuals to 0.">
+    <label class="ribo-toggle" title="Subtract each gene's linear fit on pct_ribo before the recompute. Equivalent to projecting expression onto the subspace orthogonal to %ribo, so PCA/UMAP/diffmap see only the residual (non-metabolic) variance. NMF clips negative residuals to 0.">
       <input type="checkbox" id="regress-ribo"> Regress out %ribo
     </label>
     <span class="label" style="margin-left:14px;">Visible:</span>
@@ -423,7 +423,7 @@ footer.cite a { color: var(--earth-dark); }
         <button class="order-btn" data-axis="1">A2</button>
         <button class="order-btn" data-axis="2">A3</button>
         <button class="order-btn" data-axis="3">A4</button>
-        <button class="order-btn" data-axis="-1" title="Order cells by dominant archetype then by max-archetype weight — a 'trajectory through archetypes' pseudotime.">Pseudotime</button>
+        <button class="order-btn" data-axis="-1" title="Order cells by dominant NMF factor then by max-NMF factor weight — a 'trajectory through NMF factors' pseudotime.">Pseudotime</button>
         <label class="group-by-toggle"><input type="checkbox" id="group-by-celltype"> group by cell type first</label>
       </span>
     </div>
@@ -540,9 +540,9 @@ const DEFAULT_LOAD_COLORS = ['#e0e0e0','#e0e0e0','#e0e0e0','#e0e0e0','#e0e0e0','
 let lastHoveredCell = null, lastHoveredGene = null;
 
 // ---- dynamic plot-box titles --------------------------------------------
-const VIZ_METHOD = 'NMF archetype';
+const VIZ_METHOD = 'NMF';
 let titleCellColor = 'subtype';
-let titleGeneRef   = 'dominant archetype';
+let titleGeneRef   = 'dominant NMF factor';
 let titleGeneN     = 588;
 function activeCellCount() {
   let n = 0; for (let i = 0; i < cell_active.length; i++) if (cell_active[i]) n++; return n;
@@ -622,8 +622,8 @@ document.getElementById('reset-btn').addEventListener('click', function() {
   lastHoveredCell = null; lastHoveredGene = null;
   clearHeatmapOverlay();
   clearLineGraph();
-  status.innerHTML = 'Reset. Hover a cell or gene to colour by expression and reveal archetype weights.'; clearColorKey();
-  titleCellColor = 'subtype'; titleGeneRef = 'dominant archetype'; refreshTitles();
+  status.innerHTML = 'Reset. Hover a cell or gene to colour by expression and reveal NMF factor weights.'; clearColorKey();
+  titleCellColor = 'subtype'; titleGeneRef = 'dominant NMF factor'; refreshTitles();
 });
 
 let activeSet = 'panel';
@@ -738,7 +738,7 @@ document.getElementById('search-clear').addEventListener('click', function() {
 });
 
 function powerIterTopK(A, K, maxIter, tol) {
-  // A: m x n (array of Float64Array rows). Returns {U, S, V} for top-K SVD via
+  // A: m x n (array of Float64Array rows). Returns {U, S, V} for top-K PCA via
   // power iteration with deflation. U: K arrays of length m, V: K arrays length n.
   maxIter = maxIter || 80; tol = tol || 1e-7;
   const m = A.length, n = A[0].length;
@@ -793,7 +793,7 @@ function powerIterTopK(A, K, maxIter, tol) {
 
 // ---- Gene-structure (recoverability R^2) ---------------------------------
 // Embed the selected cells into a K-dim PCA latent space (eigendecomposition of
-// the panel covariance, equivalent to SVD but cheaper for large K), then score
+// the panel covariance, equivalent to PCA but cheaper for large K), then score
 // each gene by the fraction of its variance recoverable from that embedding:
 //   R^2_j = sum_k (u_k . z_j)^2 / ||z_j||^2   (u_k = orthonormal cell-space PCs,
 //   z_j = gene j z-scored over the selected cells). Computed entirely client-side.
@@ -1213,7 +1213,7 @@ if (layerBtn) {
 }
 
 // ============================================================================
-// Subtype-subset SVD recompute
+// Subtype-subset PCA recompute
 // ============================================================================
 const subtypeCheckboxes = Array.from(document.querySelectorAll('.subt-chk input[type="checkbox"]'));
 // Per-subclass group-level all/none buttons (in the AllInhib cohort + future
@@ -1573,7 +1573,7 @@ function recomputeNMF(basisIdx, basisLabel) {
                       +h[2].toFixed(4), +h[3].toFixed(4)];
   }
 
-  // Dominant-archetype index per cell / gene
+  // Dominant-NMF factor index per cell / gene
   function domArch(w) {
     let k = 0, mx = w[0];
     for (let i = 1; i < K_ARCH; i++) if (w[i] > mx) { mx = w[i]; k = i; }
@@ -1589,7 +1589,7 @@ function recomputeNMF(basisIdx, basisLabel) {
     newGeneDom[j] = POLE_COLORS_[domArch(newGeneLoad[j])];
   }
 
-  // Update vertex-label "top gene per archetype": from H[k,:] argmax over basis.
+  // Update vertex-label "top gene per NMF factor": from H[k,:] argmax over basis.
   const newPoleTop = ['', '', '', '', '', ''];
   for (let k = 0; k < K_ARCH; k++) {
     let bestIdx = 0, best = -Infinity;
@@ -1608,7 +1608,7 @@ function recomputeNMF(basisIdx, basisLabel) {
   cell_active = newCellActive;
   pole_top = newPoleTop;
 
-  // New gene_default_colors (by dominant archetype)
+  // New gene_default_colors (by dominant NMF factor)
   gene_default_colors = newGeneDom.slice();
 
   // ---- update both plots ----
@@ -1619,7 +1619,7 @@ function recomputeNMF(basisIdx, basisLabel) {
   // 2. gene points: positions + colors
   Plotly.restyle(genePlot, {'marker.color':[gene_default_colors]}, [POINTS_TRACE]);
   applyGeneFilter();   // applies the current mean/std sliders → positions for visible genes
-  // 3. vertex labels (archetypes): update text on both plots
+  // 3. vertex labels (NMF factors): update text on both plots
   const newPoleLab = [];
   for (let p = 0; p < 6; p++) newPoleLab.push(POLE_NAMES_[p] || '');
   Plotly.restyle(cellPlot, {text:[newPoleLab], hovertext:[newPoleLab]}, [VERTEX_TRACE]);
@@ -1629,7 +1629,7 @@ function recomputeNMF(basisIdx, basisLabel) {
   Plotly.restyle(genePlot, {'marker.color':[DEFAULT_LOAD_COLORS]}, [LOADING_TRACE]);
   // 5. clear gene search highlight
   Plotly.restyle(genePlot, {x:[[null]], y:[[null]], z:[[null]]}, [HIGHLIGHT_TRACE]);
-  // 6. refresh the archetype legend in the page footer
+  // 6. refresh the NMF factor legend in the page footer
   document.getElementById('pole-legend').innerHTML = newPoleTop.slice(0, K_ARCH).map((g, k) =>
     `<span style="display:inline-block;width:10px;height:10px;background:${POLE_COLORS_[k]};` +
     `margin-right:4px;border-radius:50%;"></span> ${POLE_NAMES_[k]} (${g}) &nbsp;&nbsp;`).join('');
@@ -1641,7 +1641,7 @@ function recomputeNMF(basisIdx, basisLabel) {
     + 'peaks: ' + newPoleTop.slice(0, K_ARCH).map((g, k) =>
         POLE_NAMES_[k] + '=' + g).join(', ');
   lastHoveredCell = null; lastHoveredGene = null;
-  // 8. heatmap reflects the new archetype ordering on the new active cell set
+  // 8. heatmap reflects the new NMF factor ordering on the new active cell set
   renderHeatmap();}
 
 document.getElementById('recompute-btn').addEventListener('click', () => {
@@ -1727,9 +1727,9 @@ function renderHeatmap() {
   let activeIdx = [];
   for (let i = 0; i < cell_active.length; i++) if (cell_active[i]) activeIdx.push(i);
   const axis = heatmapOrderAxis;
-  // Pseudotime for NMF: cells ordered by dominant-archetype index then by
-  // max-archetype weight within that archetype — i.e. a "trajectory through
-  // archetypes A1 → A2 → A3 → A4". Encoded into a single sort key as
+  // Pseudotime for NMF: cells ordered by dominant-NMF factor index then by
+  // max-NMF factor weight within that NMF factor — i.e. a "trajectory through
+  // NMF factors A1 → A2 → A3 → A4". Encoded into a single sort key as
   // (domIdx + 1 - W_max), so dom=0 cells with high W_max come first.
   const sortKey = (axis === -1)
     ? (i => { let m = 0, k = 0; const s = cell_score[i];
@@ -2398,7 +2398,7 @@ if (AUTO_RECOMPUTE_DEFAULT && !location.hash.includes('s=')) {
   }
 
   // Intercept clicks on the cross-explorer View: nav links and inject the
-  // current UI state into the target URL hash so switching SVD ↔ UMAP ↔
+  // current UI state into the target URL hash so switching PCA ↔ UMAP ↔
   // diffmap ↔ NMF keeps the subtype subset, gene filter, region toggle,
   // metabolism slider, etc.
   function instrumentVizNav() {

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Marker-gene explorer.
 
-A two-population differential-expression view built on the same SVD biplot as
+A two-population differential-expression view built on the same PCA biplot as
 the recompute explorers. The user:
   - assigns cell subtypes to Group A or Group B (each subtype A / B / neither),
   - filters the gene pool (gene set + name search + min mean / dispersion),
@@ -67,7 +67,7 @@ def main():
     qc_ngenes = np.asarray(qc['n_genes'], dtype=np.float64)
     qc_ribo   = np.asarray(qc['pct_ribo'], dtype=np.float64)
 
-    # ---- initial SVD (full cohort) -----------------------------------------
+    # ---- initial PCA (full cohort) -----------------------------------------
     Xp = X_keep[:, in_panel]
     Zp = prep_cols(Xp)
     U, S, Vt = np.linalg.svd(Zp, full_matrices=False)
@@ -75,10 +75,10 @@ def main():
     cell_scores = U * S
     Zall = prep_cols(X_keep)
     gene_load3 = (Zall.T @ U) / S
-    print(f'  marker explorer: SVD on {Xp.shape[0]} cells × {int(in_panel.sum())} panel genes')
+    print(f'  marker explorer: PCA on {Xp.shape[0]} cells × {int(in_panel.sum())} panel genes')
 
     # ---- 2D UMAP of the cohort cells (cleaner DR for the lasso overlay) -----
-    # Computed from the same standardized panel-HVG matrix the SVD uses (Zp),
+    # Computed from the same standardized panel-HVG matrix the PCA uses (Zp),
     # so the lasso overlay shows a proper non-linear embedding rather than the
     # linear PC1×PC2 plane. Cell-index aligned with X_keep / subs / cell_xyz.
     import anndata as _ad
@@ -157,7 +157,7 @@ def main():
     expr_b64 = base64.b64encode(_expr_q.tobytes()).decode('ascii')
     cell_sub_idx_b64 = base64.b64encode(cell_sub_idx.tobytes()).decode('ascii')
 
-    # ---- figure construction (mirror of the SVD biplot) --------------------
+    # ---- figure construction (mirror of the PCA biplot) --------------------
     LIM, POLE = 1.0, 1.22
     axis_ends = np.array([[POLE, 0, 0], [-POLE, 0, 0], [0, POLE, 0],
                           [0, -POLE, 0], [0, 0, POLE], [0, 0, -POLE]])
@@ -434,8 +434,8 @@ button {{ font-size: 13px; padding: 4px 10px; }}
     <button id="grp-clear">clear both</button>
   </div>
   <div class="controls-row" style="gap:10px;">
-    <button id="replot-panel" title="Re-fit the SVD embedding using only the two selected groups (panel HVG genes), so the axes capture what separates A from B.">Replot on these groups (gene panel)</button>
-    <button id="replot-all" title="Re-fit the SVD embedding on the two groups using every gene currently shown in the gene filter.">Replot (shown genes)</button>
+    <button id="replot-panel" title="Re-fit the PCA embedding using only the two selected groups (panel HVG genes), so the axes capture what separates A from B.">Replot on these groups (gene panel)</button>
+    <button id="replot-all" title="Re-fit the PCA embedding on the two groups using every gene currently shown in the gene filter.">Replot (shown genes)</button>
   </div>
   <div class="controls-row" style="display:block;">{group_selector_html}</div>
 </div>
@@ -603,9 +603,9 @@ function colorModeLabel() {
 function refreshTitles() {
   const ct = document.getElementById('cell-plot-title');
   const gt = document.getElementById('gene-plot-title');
-  if (ct) ct.innerHTML = 'Cells on <b>SVD</b> axes · coloured by <b>' + colorModeLabel()
+  if (ct) ct.innerHTML = 'Cells on <b>PCA</b> axes · coloured by <b>' + colorModeLabel()
     + '</b> · n=' + activeCellCount().toLocaleString();
-  if (gt) gt.innerHTML = 'Genes on <b>SVD</b> axes · coloured by <b>' + titleGeneRef + '</b>';
+  if (gt) gt.innerHTML = 'Genes on <b>PCA</b> axes · coloured by <b>' + titleGeneRef + '</b>';
 }
 
 // ---- render the cell biplot (A∪B coloured; other cells recede to grey) ------
@@ -966,7 +966,7 @@ function renderMarkerList(top) {
   });
 }
 
-// ---- replot: refit the SVD on just the two groups --------------------------
+// ---- replot: refit the PCA on just the two groups --------------------------
 function powerIterTopK(A, K, maxIter, tol) {
   maxIter = maxIter || 80; tol = tol || 1e-7;
   const m = A.length, n = A[0].length;
@@ -1066,7 +1066,7 @@ function replot(useAllGenes) {
   renderCells();
   applyGeneFilter();
   ringGene(-1);
-  if (fs) fs.textContent = 'Re-fit SVD on ' + m + ' cells × ' + n + (useAllGenes ? ' shown' : ' panel') + ' genes.';
+  if (fs) fs.textContent = 'Re-fit PCA on ' + m + ' cells × ' + n + (useAllGenes ? ' shown' : ' panel') + ' genes.';
 }
 
 // ---- Gene-structure (recoverability R^2) ----------------------------------

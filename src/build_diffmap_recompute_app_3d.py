@@ -599,7 +599,7 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
       Metabolism filter <span id="ribo-corr-label">|r|≤1.00</span>
       <input type="range" id="ribo-corr-slider" min="0.10" max="1.00" step="0.05" value="1.00" style="vertical-align:middle; width:120px;">
       <span id="ribo-corr-count" style="color:#888;"></span></label>
-    <label class="ribo-toggle" title="Subtract each gene's linear fit on pct_ribo before the recompute. Equivalent to projecting expression onto the subspace orthogonal to %ribo, so SVD/UMAP/diffmap see only the residual (non-metabolic) variance. NMF clips negative residuals to 0.">
+    <label class="ribo-toggle" title="Subtract each gene's linear fit on pct_ribo before the recompute. Equivalent to projecting expression onto the subspace orthogonal to %ribo, so PCA/UMAP/diffmap see only the residual (non-metabolic) variance. NMF clips negative residuals to 0.">
       <input type="checkbox" id="regress-ribo"> Regress out %ribo
     </label>
     <span class="label" style="margin-left:14px;">Visible:</span>
@@ -841,7 +841,7 @@ document.getElementById('search-clear').addEventListener('click', function() {{
 }});
 
 function powerIterTopK(A, K, maxIter, tol) {{
-  // A: m x n (array of Float64Array rows). Returns {{U, S, V}} for top-K SVD via
+  // A: m x n (array of Float64Array rows). Returns {{U, S, V}} for top-K PCA via
   // power iteration with deflation. U: K arrays of length m, V: K arrays length n.
   maxIter = maxIter || 80; tol = tol || 1e-7;
   const m = A.length, n = A[0].length;
@@ -896,7 +896,7 @@ function powerIterTopK(A, K, maxIter, tol) {{
 
 // ---- Gene-structure (recoverability R^2) ---------------------------------
 // Embed the selected cells into a K-dim PCA latent space (eigendecomposition of
-// the panel covariance, equivalent to SVD but cheaper for large K), then score
+// the panel covariance, equivalent to PCA but cheaper for large K), then score
 // each gene by the fraction of its variance recoverable from that embedding:
 //   R^2_j = sum_k (u_k . z_j)^2 / ||z_j||^2   (u_k = orthonormal cell-space PCs,
 //   z_j = gene j z-scored over the selected cells). Computed entirely client-side.

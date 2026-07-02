@@ -235,7 +235,7 @@ or <b>mutual information</b> (any dependence). Hover a result to recolour the ce
 
 <div class="ctrl-box">
   <div class="ctrl-box-title">Plotting Method</div>
-  <div class="controls-row"><nav class="viz-nav"><span class="viz-nav-label">view:</span><a class="viz-nav-btn" href="allinhib_cge_nmf_recompute_explorer_4d.html"><span class="viz-nav-glyph" style="color:#2ca02c">▲</span> Archetype</a><a class="viz-nav-btn" href="allinhib_cge_svd_recompute_explorer_3d.html"><span class="viz-nav-glyph" style="color:#1f77b4">◆</span> SVD</a><a class="viz-nav-btn" href="allinhib_cge_umap_recompute_explorer_3d.html"><span class="viz-nav-glyph" style="color:#d62728">●</span> UMAP</a><a class="viz-nav-btn" href="allinhib_cge_diffmap_recompute_explorer_3d.html"><span class="viz-nav-glyph" style="color:#9467bd">◐</span> Diffmap</a><a class="viz-nav-btn" href="allinhib_cge_marker_explorer_3d.html"><span class="viz-nav-glyph" style="color:#875e38">⊟</span> Marker finder</a><a class="viz-nav-btn active" href="allinhib_cge_geneassoc_explorer_3d.html"><span class="viz-nav-glyph" style="color:#4a7a6f">⊞</span> Gene associations</a></nav></div>
+  <div class="controls-row"><nav class="viz-nav"><span class="viz-nav-label">view:</span><a class="viz-nav-btn" href="allinhib_cge_nmf_recompute_explorer_4d.html"><span class="viz-nav-glyph" style="color:#2ca02c">▲</span> NMF</a><a class="viz-nav-btn" href="allinhib_cge_svd_recompute_explorer_3d.html"><span class="viz-nav-glyph" style="color:#1f77b4">◆</span> PCA</a><a class="viz-nav-btn" href="allinhib_cge_umap_recompute_explorer_3d.html"><span class="viz-nav-glyph" style="color:#d62728">●</span> UMAP</a><a class="viz-nav-btn" href="allinhib_cge_diffmap_recompute_explorer_3d.html"><span class="viz-nav-glyph" style="color:#9467bd">◐</span> Diffmap</a><a class="viz-nav-btn" href="allinhib_cge_marker_explorer_3d.html"><span class="viz-nav-glyph" style="color:#875e38">⊟</span> Marker finder</a><a class="viz-nav-btn active" href="allinhib_cge_geneassoc_explorer_3d.html"><span class="viz-nav-glyph" style="color:#4a7a6f">⊞</span> Gene associations</a></nav></div>
 </div>
 
 <div class="ctrl-box">
@@ -288,8 +288,8 @@ or <b>mutual information</b> (any dependence). Hover a result to recolour the ce
   <div class="controls-row">
     <label class="rank-label" title="Number of singular components to keep in the recompute (1–3). Lower rank collapses axes: rank=2 puts all points on the PC1×PC2 plane (z=0); rank=1 puts them on the PC1 axis.">rank
       <input id="rank-input" type="number" min="1" max="3" value="3" step="1"></label>
-    <button id="recompute-btn" title="Refit SVD on the panel HVG, using only the active (checked-subtype, region/age-allowed) cells.">Replot on subtypes (panel HVG)</button>
-    <button id="recompute-genes-btn" title="Refit SVD using only the genes currently shown in the right biplot (gene set ∩ mean/std ∩ recoverability filters), on the active cells.">Replot with shown genes</button>
+    <button id="recompute-btn" title="Refit PCA on the panel HVG, using only the active (checked-subtype, region/age-allowed) cells.">Replot on subtypes (panel HVG)</button>
+    <button id="recompute-genes-btn" title="Refit PCA using only the genes currently shown in the right biplot (gene set ∩ mean/std ∩ recoverability filters), on the active cells.">Replot with shown genes</button>
     <span id="recompute-status" style="margin-left:8px;"></span>
   </div>
 </div>
@@ -453,7 +453,7 @@ const INVIS = 'rgba(0,0,0,0)';
 let metric = 'corr';         // corr | mi
 let geneActive = new Array(N_GENES).fill(true);
 let assoc = null;            // Float64Array of association values to focusGene
-// readVal(i,j): log-CPM expression the SVD / PCA needs.
+// readVal(i,j): log-CPM expression the PCA / PCA needs.
 function readVal(i, j){ return expr_matrix[i*N_GENES+j] / EXPR_SCALE; }
 
 // ---- palettes --------------------------------------------------------------
@@ -489,9 +489,9 @@ function refreshTitles(){
   let cl = colorMode==='qc' ? qcLabel
         : colorMode==='gene' ? (gene_name[activeGene]+' expression')
         : (colorMode==='subtype'?'subtype':(colorMode==='counts'?'total counts':(colorMode==='genes'?'genes detected':(colorMode==='ribo'?'% ribosomal':'layer'))));
-  if (ct) ct.innerHTML='Cells on <b>SVD</b> axes · coloured by <b>'+cl+'</b> · n='+getSel().length.toLocaleString();
+  if (ct) ct.innerHTML='Cells on <b>PCA</b> axes · coloured by <b>'+cl+'</b> · n='+getSel().length.toLocaleString();
   const gl = focusActive() ? (metric==='corr'?'correlation to ':'mutual info with ')+focusLabel() : 'strongest PC';
-  if (gt) gt.innerHTML='Genes on <b>SVD</b> axes · coloured by <b>'+gl+'</b>';
+  if (gt) gt.innerHTML='Genes on <b>PCA</b> axes · coloured by <b>'+gl+'</b>';
 }
 
 // ---- cell colouring --------------------------------------------------------
@@ -907,10 +907,10 @@ function renderAssocList(){
 }
 
 // ============================================================================
-// In-browser SVD refit + density + gene-structure (ported from the recompute app)
+// In-browser PCA refit + density + gene-structure (ported from the recompute app)
 // ============================================================================
 function powerIterTopK(A, K, maxIter, tol) {
-  // A: m x n (array of Float64Array rows). Returns {U, S, V} for top-K SVD via
+  // A: m x n (array of Float64Array rows). Returns {U, S, V} for top-K PCA via
   // power iteration with deflation. U: K arrays of length m, V: K arrays length n.
   maxIter = maxIter || 80; tol = tol || 1e-7;
   const m = A.length, n = A[0].length;
@@ -956,7 +956,7 @@ function powerIterTopK(A, K, maxIter, tol) {
   return {U, S, V};
 }
 
-function recomputeSVD(basisIdx, basisLabel) {
+function recomputePCA(basisIdx, basisLabel) {
   // Refit the biplot on the active cells × a gene basis (panel HVG by default,
   // or the currently-shown genes). Updates both plots' positions, the per-cell /
   // per-gene dominant-pole colors and the 6 pole labels. Re-runs the association
@@ -1094,14 +1094,14 @@ function recomputeSVD(basisIdx, basisLabel) {
 document.getElementById('recompute-btn').addEventListener('click', () => {
   const btn = document.getElementById('recompute-btn');
   btn.disabled = true; recomputeStatus.textContent = 'computing…';
-  setTimeout(() => { try { recomputeSVD(panel_idx, 'panel HVG'); } finally { btn.disabled = false; } }, 30);
+  setTimeout(() => { try { recomputePCA(panel_idx, 'panel HVG'); } finally { btn.disabled = false; } }, 30);
 });
 document.getElementById('recompute-genes-btn').addEventListener('click', () => {
   const visible = visibleGeneIdx();
   if (visible.length < 3) { recomputeStatus.innerHTML = '<span style="color:#c00">need &ge;3 considered genes (got '+visible.length+'). Loosen the filters.</span>'; return; }
   const btn = document.getElementById('recompute-genes-btn');
   btn.disabled = true; recomputeStatus.textContent = 'computing on ' + visible.length + ' shown genes…';
-  setTimeout(() => { try { recomputeSVD(visible, 'shown genes'); } finally { btn.disabled = false; } }, 30);
+  setTimeout(() => { try { recomputePCA(visible, 'shown genes'); } finally { btn.disabled = false; } }, 30);
 });
 
 // ---- "Number of similar cells": local density in the CURRENT gene space -----
@@ -1604,7 +1604,7 @@ if (cellPlot.data) boot(); else cellPlot.on('plotly_afterplot', function once(){
   }
 
   // Intercept clicks on the cross-explorer View: nav links and inject the
-  // current UI state into the target URL hash so switching SVD ↔ UMAP ↔
+  // current UI state into the target URL hash so switching PCA ↔ UMAP ↔
   // diffmap ↔ NMF keeps the subtype subset, gene filter, region toggle,
   // metabolism slider, etc.
   function instrumentVizNav() {

@@ -179,7 +179,7 @@ def main():
     n_genes_emit = int(_expr_q.shape[1])
     panel_idx = [j for j, p in enumerate(in_panel.tolist()) if p]
 
-    # ---- figure construction (same as SVD script) ----------------------------
+    # ---- figure construction (same as PCA script) ----------------------------
     LIM = 1.0
     POLE = 1.22
     axis_ends = np.array([[ POLE,0,0],[-POLE,0,0],[0, POLE,0],
@@ -271,7 +271,7 @@ def main():
 
     gx, gy, gz = (np.round(gene_xyz[:, k], 4).tolist() for k in range(3))
 
-    # gene-set masks (same as the SVD script)
+    # gene-set masks (same as the PCA script)
     panel_mask_list = in_panel.tolist()
     set_masks  = {'all': [True]*n_genes, 'panel': panel_mask_list}
     set_counts = {'all': n_genes,        'panel': n_panel_disp}
@@ -677,7 +677,7 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
       Metabolism filter <span id="ribo-corr-label">|r|≤1.00</span>
       <input type="range" id="ribo-corr-slider" min="0.10" max="1.00" step="0.05" value="1.00" style="vertical-align:middle; width:120px;">
       <span id="ribo-corr-count" style="color:#888;"></span></label>
-    <label class="ribo-toggle" title="Subtract each gene's linear fit on pct_ribo before the recompute. Equivalent to projecting expression onto the subspace orthogonal to %ribo, so SVD/UMAP/diffmap see only the residual (non-metabolic) variance. NMF clips negative residuals to 0.">
+    <label class="ribo-toggle" title="Subtract each gene's linear fit on pct_ribo before the recompute. Equivalent to projecting expression onto the subspace orthogonal to %ribo, so PCA/UMAP/diffmap see only the residual (non-metabolic) variance. NMF clips negative residuals to 0.">
       <input type="checkbox" id="regress-ribo"> Regress out %ribo
     </label>
     <span class="label" style="margin-left:14px;">Visible:</span>
@@ -953,7 +953,7 @@ document.getElementById('search-clear').addEventListener('click', function() {{
 
 // ---- Gene-structure (recoverability R^2) ---------------------------------
 // Embed the selected cells into a K-dim PCA latent space (eigendecomposition of
-// the panel covariance, equivalent to SVD but cheaper for large K), then score
+// the panel covariance, equivalent to PCA but cheaper for large K), then score
 // each gene by the fraction of its variance recoverable from that embedding:
 //   R^2_j = sum_k (u_k . z_j)^2 / ||z_j||^2   (u_k = orthonormal cell-space PCs,
 //   z_j = gene j z-scored over the selected cells). Computed entirely client-side.
@@ -1458,7 +1458,7 @@ function ageAllowed(i) {{
 }}
 
 function powerIterTopK(A, K, maxIter, tol) {{
-  // A: m x n (array of Float64Array rows). Returns {{U, S, V}} for top-K SVD via
+  // A: m x n (array of Float64Array rows). Returns {{U, S, V}} for top-K PCA via
   // power iteration with deflation. U: K arrays of length m, V: K arrays length n.
   maxIter = maxIter || 80; tol = tol || 1e-7;
   const m = A.length, n = A[0].length;
@@ -1511,9 +1511,9 @@ function powerIterTopK(A, K, maxIter, tol) {{
   return {{U, S, V}};
 }}
 
-function recomputeSVD(basisIdx, basisLabel) {{
-  // basisIdx is the list of gene indices used as the SVD's basis ("panel" of
-  // genes the SVD is *fit on*). Default = the panel HVG. Pass the currently-
+function recomputePCA(basisIdx, basisLabel) {{
+  // basisIdx is the list of gene indices used as the PCA's basis ("panel" of
+  // genes the PCA is *fit on*). Default = the panel HVG. Pass the currently-
   // visible gene indices to refit on whatever the gene biplot is showing.
   basisIdx = basisIdx || panel_idx;
   basisLabel = basisLabel || 'panel HVG';
@@ -1739,7 +1739,7 @@ document.getElementById('recompute-btn').addEventListener('click', () => {{
   const btn = document.getElementById('recompute-btn');
   btn.disabled = true; recomputeStatus.textContent = 'computing…';
   // Defer to next frame so the disabled state actually renders
-  setTimeout(() => {{ try {{ recomputeSVD(panel_idx, 'panel HVG'); }} finally {{ btn.disabled = false; }} }}, 30);
+  setTimeout(() => {{ try {{ recomputePCA(panel_idx, 'panel HVG'); }} finally {{ btn.disabled = false; }} }}, 30);
 }});
 
 function visibleGeneIdx() {{
@@ -1768,7 +1768,7 @@ document.getElementById('recompute-genes-btn').addEventListener('click', () => {
   btn.disabled = true;
   recomputeStatus.textContent = 'computing on ' + visible.length + ' shown genes…';
   setTimeout(() => {{
-    try {{ recomputeSVD(visible, 'shown genes'); }}
+    try {{ recomputePCA(visible, 'shown genes'); }}
     finally {{ btn.disabled = false; }}
   }}, 30);
 }});

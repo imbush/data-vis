@@ -207,7 +207,7 @@
     <span class="cohort-name">Fezf2-KO cortical interneurons</span>
     <span class="cohort-meta"><b>30,484</b> cells · Control vs Fezf2-KO · P20 cortex · Wu/Fishell (Nature 2026)</span>
   </div>
-  <div class="note">snRNA-seq (GSE272706). Recompute SVD / UMAP / diffmap / NMF in-browser, subset by <b>27 fine subtypes</b> (marker-named, incl. Pvalb chandelier, Sst Chodl) and by <b>genotype</b> (Control vs Fezf2-KO), and filter the gene panel. Labels transferred from an age-matched developing-VISp reference (Gao 2025, P12–P28); Scrublet + QC applied. SST rises in the mutant (28→31%).</div>
+  <div class="note">snRNA-seq (GSE272706). Recompute PCA / UMAP / diffmap / NMF in-browser, subset by <b>27 fine subtypes</b> (marker-named, incl. Pvalb chandelier, Sst Chodl) and by <b>genotype</b> (Control vs Fezf2-KO), and filter the gene panel. Labels transferred from an age-matched developing-VISp reference (Gao 2025, P12–P28); Scrublet + QC applied. SST rises in the mutant (28→31%).</div>
   <div class="viz-row">
     <a class="viz-btn svd" href="fezf2/fezf2_svd_recompute_explorer_3d.html"><span class="glyph">◆</span> Visualize</a>
   </div>
@@ -235,7 +235,7 @@
 <div class="cohort inhib">
   <div class="cohort-head">
     <span class="cohort-name">V1 – Interneuron Patch-seq</span>
-    <span class="cohort-meta"><b>4,435</b> cells · Gouwens et al. · overlaid on the V1 SVD</span>
+    <span class="cohort-meta"><b>4,435</b> cells · Gouwens et al. · overlaid on the V1 PCA</span>
   </div>
   <div class="viz-row">
     <a class="viz-btn" href="patchseq/patchseq_met_gouwens_explorer.html" style="border-color:var(--c-inhib);"><span class="glyph" style="color:var(--c-inhib);">⊙</span> Open explorer</a>
@@ -245,7 +245,7 @@
 <div class="cohort inhib">
   <div class="cohort-head">
     <span class="cohort-name">M1 – Interneuron Patch-seq</span>
-    <span class="cohort-meta"><b>399</b> cells · Scala et al. · overlaid on the V1 + ALM SVD</span>
+    <span class="cohort-meta"><b>399</b> cells · Scala et al. · overlaid on the V1 + ALM PCA</span>
   </div>
   <div class="viz-row">
     <a class="viz-btn" href="patchseq/patchseq_met_tolias_explorer.html" style="border-color:var(--c-inhib);"><span class="glyph" style="color:var(--c-inhib);">⊙</span> Open explorer</a>
@@ -285,14 +285,14 @@
     <b>Datasets.</b> Adult V1 + ALM SMART-seq (Tasic et al. 2018); developmental V1
     10x atlas E11.5 → P56 (Gao et al. 2025, Allen ABC Atlas); patch-seq morpho-electric-
     transcriptomic cells from VISp (Gouwens et al. 2020) and M1 (Scala et al. 2021),
-    K-NN-imputed onto the Tasic reference and overlaid on its SVD; and Zhuang
+    K-NN-imputed onto the Tasic reference and overlaid on its PCA; and Zhuang
     <i>et al.</i> ABCA MERFISH for the spatial view. Per-subclass HVG selected on
     log-CPM via Seurat-v3 variance; curated gene-set buttons add receptor / neuropeptide
     overlays beyond the HVG top-N.<br><br>
     <b>Four embeddings, recomputed in-browser.</b> Each explorer refits its embedding
     client-side on whichever cells (subtype / lineage / region / age filters) and genes
-    you select. SVD = power-iteration with deflation; UMAP = umap-js; diffusion map =
-    Laplacian eigenmap; NMF = multiplicative-update (Lee &amp; Seung), K=4 archetypes in a
+    you select. PCA = power-iteration with deflation; UMAP = umap-js; diffusion map =
+    Laplacian eigenmap; NMF = multiplicative-update (Lee &amp; Seung), K=4 NMF factors in a
     tetrahedron. Switch method from the <b>Plotting Method</b> box; the plots sit on top,
     controls below.<br><br>
     <b>Colour.</b> Cells colour by subtype by default (cardinal classes share a hue

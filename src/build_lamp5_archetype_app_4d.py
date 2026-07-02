@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Build a self-contained HTML app for exploring a K=4 archetype NMF of a
+"""Build a self-contained HTML app for exploring a K=4 NMF factor NMF of a
 GABAergic cell-type subset of the Tasic 2018 V1 dataset.
 
 Usage:
@@ -8,7 +8,7 @@ Usage:
 GROUP is one of: Lamp5 (default), Sst, Pvalb, Vip, Sncg.
 
 The app shows:
-  - Cells embedded inside a 3D tetrahedron (W barycentric, 4 archetypes)
+  - Cells embedded inside a 3D tetrahedron (W barycentric, 4 NMF factors)
   - Genes embedded inside a second 3D tetrahedron (H barycentric)
   - Hover a gene -> cells recolor by that gene's expression
   - Hover a cell -> genes recolor by that cell's expression of each gene
@@ -89,7 +89,7 @@ GROUPS = {
         cache_outliers=(),
         runtime_exclude=(),
         exclude_cells=('F2S4_171122_010_H01', 'F2S4_170406_018_D01'),
-        # Pooled cohorts ship no static archetype HTML; the archetype slot in
+        # Pooled cohorts ship no static NMF factor HTML; the NMF factor slot in
         # the cross-explorer nav points at the in-browser NMF recompute view.
         viz_nav_overrides={'archetype': '{slug}_nmf_recompute_explorer_4d.html'},
         # Default subtype subset for the recompute explorers — only these
@@ -250,12 +250,12 @@ GROUPS = {
 }
 
 # --- Cross-explorer navigation. Buttons at the top of each explorer link to
-# the same group's UMAP / archetype-NMF / SVD-biplot / diffmap variants.
+# the same group's UMAP / NMF factor-NMF / PCA-biplot / diffmap variants.
 # (kind, label, glyph, glyph-colour, filename template) — glyphs + colours match
 # the landing page so the Plotting Method bar reads like the home cards.
 VIZ_TYPES = [
-    ('archetype', 'Archetype',         '▲', '#2ca02c', '{slug}_archetype_explorer_4d.html'),
-    ('svd',       'SVD',               '◆', '#1f77b4', '{slug}_svd_recompute_explorer_3d.html'),
+    ('archetype', 'NMF',         '▲', '#2ca02c', '{slug}_archetype_explorer_4d.html'),
+    ('svd',       'PCA',               '◆', '#1f77b4', '{slug}_svd_recompute_explorer_3d.html'),
     ('umap',      'UMAP',              '●', '#d62728', '{slug}_umap_recompute_explorer_3d.html'),
     ('diffmap',   'Diffmap',           '◐', '#9467bd', '{slug}_diffmap_recompute_explorer_3d.html'),
     ('marker',    'Marker finder',     '⊟', '#875e38', '{slug}_marker_explorer_3d.html'),
@@ -413,7 +413,7 @@ def cohort_citation(group_name):
 def viz_nav_html(slug, current_kind, group_overrides=None):
     """Cross-explorer nav. `group_overrides` is an optional dict mapping the
     `kind` to a custom filename format — used when a cohort doesn't ship the
-    default file (e.g. AllInhib has no static archetype; its archetype slot
+    default file (e.g. AllInhib has no static NMF factor; its NMF factor slot
     instead links to the in-browser NMF recompute explorer).
 
     If `group_overrides` is None we consult the active GROUP for a
@@ -701,7 +701,7 @@ PROJ_CACHE = os.path.join(ROOT, 'notebooks', 'cache',
 def normalize_cols(M):
     """Per-gene z-score, shifted non-negative so it can feed NMF (which needs
     >=0). Z-scoring down-weights broadly-loud genes (Resp18/Scg2) so the
-    archetypes reflect co-expression pattern rather than absolute magnitude.
+    NMF factors reflect co-expression pattern rather than absolute magnitude.
     M is cells x genes, log-CPM."""
     M = np.asarray(M, dtype=np.float64)
     z = (M - M.mean(0)) / (M.std(0) + 1e-9)
@@ -1104,7 +1104,7 @@ def qc_cache_path():
 def compute_or_load_proj_full(force=False):
     """Like compute_or_load_proj but includes the cells the cache builder
     excluded (cache_outliers, runtime_exclude) and skips NMF. Intended for
-    SVD/diffmap recompute explorers that let the user filter subtypes from a UI.
+    PCA/diffmap recompute explorers that let the user filter subtypes from a UI.
     Saves to {Group}_archetype_proj_full.pkl.
     """
     path = os.path.join(ROOT, 'notebooks', 'cache',
@@ -1578,11 +1578,11 @@ def main():
 
     fig_cells = build_fig(cell_xyz, cell_color_default, cell_hover_text,
                           f'Cells — W barycentric (n={n_cells})  '
-                          f'<i>hover → genes recolor; A1–A4 dots = this cell\'s archetype loadings</i>',
+                          f'<i>hover → genes recolor; A1–A4 dots = this cell\'s NMF factor loadings</i>',
                           'cells')
     fig_genes = build_fig(gene_xyz, gene_color_default, gene_hover_text,
                           f'Genes — H barycentric ({n_panel_disp} panel + {n_imputed} imputed)  '
-                          f'<i>hover → cells recolor; A1–A4 dots = this gene\'s archetype loadings</i>',
+                          f'<i>hover → cells recolor; A1–A4 dots = this gene\'s NMF factor loadings</i>',
                           'genes')
 
     cells_html = to_html(fig_cells, include_plotlyjs='cdn', full_html=False,
@@ -1697,7 +1697,7 @@ def main():
 <html>
 <head>
 <meta charset="utf-8">
-<title>{GROUP_NAME} 4-archetype explorer</title>
+<title>{GROUP_NAME} 4-NMF explorer</title>
 <style>
 html, body {{ height: 100%; margin: 0; padding: 0; }}
 body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
@@ -1732,7 +1732,7 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
 </style>
 </head>
 <body>
-<h2>{GROUP_NAME} 4-archetype NMF — rotatable tetrahedrons</h2>
+<h2>{GROUP_NAME} 4-NMF — rotatable tetrahedrons</h2>
 {viz_nav_html(SLUG, 'archetype')}
 <div class="hint">
 <b>Hover over a cell on the left</b> to see its expression of the genes on the right.
@@ -1742,16 +1742,16 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
 <summary>About this app (click to expand)</summary>
 <div style="margin-top:4px;">
 Cells ({n_cells}; subtype-coloured by default) embed in a 4-vertex tetrahedron whose
-vertices are the 4 NMF archetypes. Each panel HVG is <b>z-scored across cells</b>
-(then shifted non-negative) before the fit, so the archetypes reflect each gene's
+vertices are the 4 NMFs. Each panel HVG is <b>z-scored across cells</b>
+(then shifted non-negative) before the fit, so the NMF factors reflect each gene's
 co-expression pattern rather than its absolute magnitude — without this, a few
-broadly-loud genes (e.g. Resp18/Scg2) dominate every archetype. Fit on
+broadly-loud genes (e.g. Resp18/Scg2) dominate every NMF factor. Fit on
 {n_panel_disp} panel HVG; consensus stability silhouette: <b>{sil:.3f}</b>.
 Genes embed via column-normalised H: the {n_panel_disp} panel
 HVG inherit their NMF H; the {n_imputed} broader genes (top by mean log-CPM in {GROUP_NAME})
 get their loadings via NNLS projection onto the same W — labelled "imputed" on hover.<br>
 <b>Hover</b> a gene → cells recolour by expression; <b>hover</b> a cell → genes recolour.
-The 4 large dots outside each tetrahedron's vertices show that hovered point's archetype
+The 4 large dots outside each tetrahedron's vertices show that hovered point's NMF factor
 loadings (magma: 0 black → 1 white).
 Drag inside a pyramid to rotate; right-click + drag to pan; scroll to zoom.
 Vertices: A1 = {arch_top[0][0]}, A2 = {arch_top[1][0]}, A3 = {arch_top[2][0]}, A4 = {arch_top[3][0]}.
@@ -1794,7 +1794,7 @@ Vertices: A1 = {arch_top[0][0]}, A2 = {arch_top[1][0]}, A3 = {arch_top[2][0]}, A
   </div>
   <div class="controls-row">
     <span id="status">Hover a cell (left) or a gene (right) to colour by expression.
-    Big dots outside the vertices show that point's archetype loadings (magma 0→1).</span>
+    Big dots outside the vertices show that point's NMF factor loadings (magma 0→1).</span>
   </div>
 </div>
 <div class="row">
@@ -1803,7 +1803,7 @@ Vertices: A1 = {arch_top[0][0]}, A2 = {arch_top[1][0]}, A3 = {arch_top[2][0]}, A
 </div>
 <div class="legend">
 <b>Cell default colours</b> (subtype): {sub_legend}<br>
-<b>Gene default colours</b> (dominant archetype): {arch_legend}
+<b>Gene default colours</b> (dominant NMF factor): {arch_legend}
 </div>
 <script>
 {js_data}
