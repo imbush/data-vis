@@ -88,7 +88,7 @@
 
 <header>
   <h1>Mouse cortex single-cell explorers</h1>
-  <div class="tag">Adult V1 + ALM — Tasic 2018 · Developmental V1 — Gao 2025 · Patch-seq — Gouwens 2020 &amp; Scala 2020 · Spatial MERFISH — Zhuang ABCA</div>
+  <div class="tag">Adult V1 + ALM — Tasic 2018 · Developmental V1 — Gao 2025 · Patch-seq — Gouwens 2020 &amp; Scala 2020</div>
 </header>
 
 <h2>Inhibitory neurons</h2>
@@ -176,23 +176,33 @@
 <h2>Developmental (E11.5 → P56)</h2>
 <div class="cohorts">
 
+<div class="cohort exc">
+  <div class="cohort-head">
+    <span class="cohort-name">Developing V1 – Excitatory neurons</span>
+    <span class="cohort-meta"><b>60,000</b> cells (subsampled) · IT + nonIT Glut · 36 clusters · Gao et al.</span>
+  </div>
+  <div class="viz-row">
+    <a class="viz-btn svd" href="devvis/devvis_excitatory.html"><span class="glyph">◆</span> Visualize</a>
+  </div>
+</div>
+
 <div class="cohort inhib">
   <div class="cohort-head">
     <span class="cohort-name">Developing V1 – MGE lineage neurons</span>
-    <span class="cohort-meta"><b>18,031</b> cells · 32 subtypes · Gao et al. · slower</span>
+    <span class="cohort-meta"><b>38,296</b> cells · Pvalb / Sst / Lamp5-Lhx6 · 33 clusters · Gao et al.</span>
   </div>
   <div class="viz-row">
-    <a class="viz-btn svd"       href="devinhib_mge/devinhib_mge_svd_recompute_explorer_3d.html"><span class="glyph">◆</span> Visualize</a>
+    <a class="viz-btn svd" href="devvis/devvis_mge.html"><span class="glyph">◆</span> Visualize</a>
   </div>
 </div>
 
 <div class="cohort inhib">
   <div class="cohort-head">
     <span class="cohort-name">Developing V1 – CGE lineage neurons</span>
-    <span class="cohort-meta"><b>15,726</b> cells · 29 subtypes · Gao et al. · slower</span>
+    <span class="cohort-meta"><b>17,567</b> cells · Lamp5 / Vip / Sncg · 30 clusters · Gao et al.</span>
   </div>
   <div class="viz-row">
-    <a class="viz-btn svd"       href="devinhib_cge/devinhib_cge_svd_recompute_explorer_3d.html"><span class="glyph">◆</span> Visualize</a>
+    <a class="viz-btn svd" href="devvis/devvis_cge.html"><span class="glyph">◆</span> Visualize</a>
   </div>
 </div>
 
@@ -254,41 +264,15 @@
 
 </div>
 
-<h2>Spatial transcriptomics</h2>
-<div class="cohorts">
-
-<div class="cohort inhib">
-  <div class="cohort-head">
-    <span class="cohort-name">V1 + ALM – Spatial (MERFISH)</span>
-    <span class="cohort-meta"><b>83</b> sections · 46,942 cortical GABA cells · Zhuang et al.</span>
-  </div>
-  <div class="viz-row">
-    <a class="viz-btn" href="spatial/spatial_v1alm_explorer.html" style="border-color:var(--c-inhib);"><span class="glyph" style="color:var(--c-inhib);">✦</span> Open spatial explorer</a>
-  </div>
-</div>
-
-<div class="cohort inhib">
-  <div class="cohort-head">
-    <span class="cohort-name">Whole brain – Spatial (MERFISH)</span>
-    <span class="cohort-meta"><b>23</b> sections · 1.59M cells · all classes · Zhuang ABCA-3</span>
-  </div>
-  <div class="viz-row">
-    <a class="viz-btn" href="spatial_zhuang/index.html" style="border-color:var(--c-inhib);"><span class="glyph" style="color:var(--c-inhib);">✦</span> Open whole-brain explorer</a>
-  </div>
-</div>
-
-</div>
-
 <details class="about">
   <summary>About these explorers</summary>
   <div>
     <b>Datasets.</b> Adult V1 + ALM SMART-seq (Tasic et al. 2018); developmental V1
     10x atlas E11.5 → P56 (Gao et al. 2025, Allen ABC Atlas); patch-seq morpho-electric-
     transcriptomic cells from VISp (Gouwens et al. 2020) and M1 (Scala et al. 2021),
-    K-NN-imputed onto the Tasic reference and overlaid on its PCA; and Zhuang
-    <i>et al.</i> ABCA MERFISH for the spatial view. Per-subclass HVG selected on
-    log-CPM via Seurat-v3 variance; curated gene-set buttons add receptor / neuropeptide
-    overlays beyond the HVG top-N.<br><br>
+    K-NN-imputed onto the Tasic reference and overlaid on its PCA. Per-subclass HVG
+    selected on log-CPM via Seurat-v3 variance; curated gene-set buttons add receptor /
+    neuropeptide overlays beyond the HVG top-N.<br><br>
     <b>Four embeddings, recomputed in-browser.</b> Each explorer refits its embedding
     client-side on whichever cells (subtype / lineage / region / age filters) and genes
     you select. PCA = power-iteration with deflation; UMAP = umap-js; diffusion map =
@@ -311,10 +295,8 @@
 
 <footer>
 Data: Tasic et al. 2018 (V1 + ALM SMART-seq) · Gao et al. 2025 (developmental V1, Allen ABC
-Atlas) · Gouwens et al. 2020 &amp; Scala et al. 2021 (patch-seq) · Zhuang ABCA (MERFISH spatial,
-CCFv3 25 µm parcellation) · Yao 2023 taxonomy.
-Built with Plotly, umap-js, scanpy, scikit-image, alphashape, shapely. Self-contained HTML,
-no server.
+Atlas) · Gouwens et al. 2020 &amp; Scala et al. 2021 (patch-seq) · Yao 2023 taxonomy.
+Built with Plotly, umap-js, scanpy. Self-contained HTML, no server.
 </footer>
 
 </div>
