@@ -23,8 +23,9 @@ def ref_of(nm):   # cells in which to measure gradedness for each axis
     if nm.startswith('P56'): return [56,56]
     return 'mat'
 axis_ref=[ref_of(n) for n in axis_names]
+MATGENES=['Dcx','Sox11','Sox4','Tubb3','Sox2','Neurod2','Cd24a','Nnat','Igfbpl1','Marcksl1','Ccnd2','Btg1','Tubb2b','Stmn2','Stmn1']
 META=dict(n=N,g=G,k=K,nax=NAX,genes=genes,escale=escale,clu_cats=clu_cats,axis_names=axis_names,
-          nmf_top=nmf_top,mat_fac=matf,xed=xed,shared=shared,axis_ref=axis_ref)
+          nmf_top=nmf_top,mat_fac=matf,xed=xed,shared=shared,axis_ref=axis_ref,mat_genes=MATGENES)
 
 TEMPLATE=r"""<!doctype html><html><head><meta charset="utf-8"><title>DevVIS Lamp5 — maturation × continuum</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
@@ -51,6 +52,9 @@ TEMPLATE=r"""<!doctype html><html><head><meta charset="utf-8"><title>DevVIS Lamp
  <div id="side">
   <h1>DevVIS Lamp5 · maturation × continuum</h1>
   <p class="sub" id="sub"></p>
+  <div class="sec">X-axis</div>
+  <select id="xaxis"><option value="maturity">transcriptomic maturity</option><option value="age">age (postnatal day)</option></select>
+  <div class="muted" id="xnote" style="margin-top:4px"></div>
   <div class="sec">Continuum y-axis</div>
   <select id="axis"></select>
   <div class="muted" id="axnote" style="margin-top:4px"></div>
@@ -86,36 +90,44 @@ const PALETTE=['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b','#e37
 const CLSCOL={'A-pole':'#2166ac','B-pole':'#b2182b','mid-peak':'#7b3294','mid-dip':'#1b7837'};
 const plotDiv=document.getElementById('plot'),emDiv=document.getElementById('emerge');
 document.getElementById('sub').innerHTML=N.toLocaleString()+" Lamp5 · Gao 2025 · P3→P56 · "+G+" genes.<br><b>x</b>=maturity (Dcx/Sox11↓) · <b>y</b>=identity continuum (selectable below).";
-let axisIdx=0, PSZ=4, curGene=-1, curMode='gene', curNMF=0;
+let axisIdx=0, PSZ=4, curGene=-1, curMode='gene', curNMF=0, xMode='maturity';
 function YC(){const c=new Float32Array(N);for(let i=0;i<N;i++)c[i]=YALL[i*NAX+axisIdx];return c;}
 let yc=YC();
+function XV(){return xMode==='maturity'?MAT:AGE;}
+const XLAB=()=>xMode==='maturity'?'maturity  (immature → mature)':'age  (postnatal day)';
 const gene=j=>{const o=new Float32Array(N);for(let i=0;i<N;i++)o[i]=EXPR[i*G+j]/ES;return o;};
 function quant(a,q){const s=Float32Array.from(a).sort();return s[Math.floor(q*(s.length-1))];}
 const baseLayout=()=>({margin:{l:44,r:8,t:8,b:38},hovermode:'closest',
- xaxis:{title:'maturity  (immature → mature)',zeroline:false},
+ xaxis:{title:XLAB(),zeroline:false},
  yaxis:{title:'continuum: '+META.axis_names[axisIdx]+'  (A-pole ↔ B-pole)',zeroline:false},
  paper_bgcolor:'#fff',plot_bgcolor:'#fff',uirevision:'k'});
 function setStatus(t){document.getElementById('status').innerHTML=t;}
 
 function scatter(color,cbar,cscale,discrete){
+ const xv=XV();
  if(discrete){const traces=META.clu_cats.map((nm,k)=>({type:'scattergl',mode:'markers',name:nm,x:[],y:[],marker:{size:PSZ,color:PALETTE[k%PALETTE.length]},hoverinfo:'name'}));
-  for(let i=0;i<N;i++){const t=traces[CLU[i]];t.x.push(MAT[i]);t.y.push(yc[i]);}
+  for(let i=0;i<N;i++){const t=traces[CLU[i]];t.x.push(xv[i]);t.y.push(yc[i]);}
   Plotly.react(plotDiv,traces,Object.assign(baseLayout(),{showlegend:true,legend:{font:{size:9},itemsizing:'constant'}}),{responsive:true,displaylogo:false});return;}
- const tr={type:'scattergl',mode:'markers',x:Array.from(MAT),y:Array.from(yc),
+ const tr={type:'scattergl',mode:'markers',x:Array.from(xv),y:Array.from(yc),
    marker:{size:PSZ,color:Array.from(color),colorscale:cscale,colorbar:{title:cbar,thickness:12,len:.7},cmin:quant(color,0.02),cmax:quant(color,0.98)},hoverinfo:'skip'};
  Plotly.react(plotDiv,[tr],Object.assign(baseLayout(),{showlegend:false}),{responsive:true,displaylogo:false});}
 
-function xbin(v){const e=META.xed;for(let b=0;b<6;b++)if(v<=e[b+1]||b==5)return b;return 5;}
-function emergence(j,label){const NY=12;const ye=[];const s=Float32Array.from(yc).sort();for(let b=0;b<=NY;b++)ye.push(s[Math.floor(b/NY*(N-1))]);
+function emergence(j,label){const NY=12,NX=6;const xv=XV();
+ const ys=Float32Array.from(yc).sort();const ye=[];for(let b=0;b<=NY;b++)ye.push(ys[Math.floor(b/NY*(N-1))]);
+ const xs=Float32Array.from(xv).sort();const xe=[];for(let b=0;b<=NX;b++)xe.push(xs[Math.floor(b/NX*(N-1))]);
  const yb=v=>{for(let b=0;b<NY;b++)if(v<=ye[b+1]||b==NY-1)return b;return NY-1;};
- const sum=Array.from({length:NY},()=>new Float64Array(6)),cnt=Array.from({length:NY},()=>new Float64Array(6));
- for(let i=0;i<N;i++){const xb=xbin(MAT[i]),yy=yb(yc[i]);sum[yy][xb]+=EXPR[i*G+j]/ES;cnt[yy][xb]++;}
+ const xb=v=>{for(let b=0;b<NX;b++)if(v<=xe[b+1]||b==NX-1)return b;return NX-1;};
+ const sum=Array.from({length:NY},()=>new Float64Array(NX)),cnt=Array.from({length:NY},()=>new Float64Array(NX));
+ for(let i=0;i<N;i++){const bx=xb(xv[i]),yy=yb(yc[i]);sum[yy][bx]+=EXPR[i*G+j]/ES;cnt[yy][bx]++;}
  const z=sum.map((r,y)=>r.map((s,x)=>cnt[y][x]?s/cnt[y][x]:null));
- Plotly.react(emDiv,[{type:'heatmap',z:z,x:[...Array(6)].map((_,b)=>'M'+(b+1)),y:[...Array(NY)].map((_,b)=>b+1),
+ const pre=xMode==='maturity'?'M':'A';
+ const xlab=[...Array(NX)].map((_,b)=>pre+(b+1)+' ('+xe[b].toFixed(xMode==='age'?0:1)+'–'+xe[b+1].toFixed(xMode==='age'?0:1)+')');
+ const xtt=xMode==='maturity'?'maturity bin (immature→mature)':'age bin (P days)';
+ Plotly.react(emDiv,[{type:'heatmap',z:z,x:xlab,y:[...Array(NY)].map((_,b)=>b+1),
    colorscale:'Magma',colorbar:{title:'mean',thickness:10,len:.9},hoverongaps:false,
-   hovertemplate:'maturity %{x} · continuum %{y}<br>'+label+' = %{z:.2f}<extra></extra>'}],
-  {margin:{l:34,r:8,t:22,b:30},title:{text:label+' — maturity (→) × continuum (↑) mean expression',font:{size:11}},
-   xaxis:{title:'maturity bin',type:'category'},yaxis:{title:'continuum bin',type:'category'}},{responsive:true,displaylogo:false});}
+   hovertemplate:'%{x} · continuum %{y}<br>'+label+' = %{z:.2f}<extra></extra>'}],
+  {margin:{l:34,r:8,t:22,b:44},title:{text:label+' — '+(xMode==='maturity'?'maturity':'age')+' (→) × continuum (↑) mean expression',font:{size:11}},
+   xaxis:{title:xtt,type:'category',tickangle:0,tickfont:{size:9}},yaxis:{title:'continuum bin',type:'category'}},{responsive:true,displaylogo:false});}
 
 // gradedness of every gene along the SELECTED y-axis, measured in that axis's
 // reference cells (mature quartile for Global/Consensus, the age window otherwise).
@@ -174,6 +186,13 @@ function redraw(){ if(curMode==='gene')colorByGene(curGene>=0?curGene:META.genes
 const axsel=document.getElementById('axis');META.axis_names.forEach((n,i)=>{const o=document.createElement('option');o.value=i;o.text=n;axsel.appendChild(o);});
 document.getElementById('axnote').innerHTML='PC & pseudotime agree closely per age; the <b>P3–7</b> axis differs most from adult. "Consensus" = '+META.shared.length+' genes shared across all age axes.';
 axsel.onchange=()=>{axisIdx=+axsel.value;yc=YC();refreshTable();redraw();};
+// x-axis selector (maturity <-> age)
+const xsel=document.getElementById('xaxis'),xnote=document.getElementById('xnote');
+function setXNote(){xnote.innerHTML=xMode==='maturity'
+  ? 'maturity = −mean z-score of '+META.mat_genes.length+' immaturity genes ('+META.mat_genes.slice(0,6).join(', ')+'…); high = mature.'
+  : 'actual developmental age (P3→P56); more discrete than maturity.';}
+setXNote();
+xsel.onchange=()=>{xMode=xsel.value;setXNote();redraw();};
 // mode
 document.getElementById('mode').onchange=()=>{const m=document.getElementById('mode').value;curMode=m;
  document.getElementById('genebox').style.display=m==='gene'?'block':'none';
