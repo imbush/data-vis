@@ -41,20 +41,31 @@ def project(ww):
     b=float((y*maturity).sum()/(maturity*maturity).sum()); y=y-b*maturity   # residualise vs maturity
     return ((y-y.mean())/y.std()).astype(np.float32)
 
-def pc_axis(mask):
+# global PCA(30) space for the nonlinear kNN projection across ages
+Zg=(X[:,hvg]-X[:,hvg].mean(0))/(X[:,hvg].std(0)+1e-6)
+Ug,Sg,_=svd(Zg-Zg.mean(0),full_matrices=False); PCAg=(Ug[:,:30]*Sg[:30]).astype(np.float32)
+from sklearn.neighbors import NearestNeighbors
+def project_knn(refmask, ref_score, k=15):
+    """nonlinear projection: each cell = mean diffusion coord of its k nearest
+    REFERENCE cells (in global PCA space). No per-gene linear weights."""
+    nn=NearestNeighbors(n_neighbors=min(k,int(refmask.sum()))).fit(PCAg[refmask])
+    _,idx=nn.kneighbors(PCAg); y=ref_score[idx].mean(1)
+    b=float((y*maturity).sum()/(maturity*maturity).sum()); y=y-b*maturity
+    return ((y-y.mean())/y.std()).astype(np.float32)
+
+def pc_axis(mask):   # LINEAR gene-signature axis (one weight per gene)
     Xr=X[np.ix_(mask,hvg)]; Z=(Xr-Xr.mean(0))/(Xr.std(0)+1e-6)
     U,S,Vt=svd(Z-Z.mean(0),full_matrices=False); con=polecon(mask)
     cors=[np.corrcoef(U[:,k],con)[0,1] for k in range(15)]; kb=int(np.argmax(np.abs(cors)))
-    return np.sign(cors[kb])*U[:,kb], signature_from_score(mask,np.sign(cors[kb])*U[:,kb])
-def dpt_axis(mask):
+    return signature_from_score(mask,np.sign(cors[kb])*U[:,kb])
+def dpt_score(mask):  # NONLINEAR diffusion coordinate on the reference cells
     Xr=X[np.ix_(mask,hvg)]; Z=(Xr-Xr.mean(0))/(Xr.std(0)+1e-6)
     U,S,Vt=svd(Z-Z.mean(0),full_matrices=False); pca=U[:,:15]*S[:15]
     am=ad.AnnData(Xr); am.obsm['X_pca']=pca
     sc.pp.neighbors(am,use_rep='X_pca',n_neighbors=15,random_state=0); sc.tl.diffmap(am,n_comps=8)
     DC=am.obsm['X_diffmap']; con=polecon(mask)
     cors=[abs(np.corrcoef(DC[:,k],con)[0,1]) for k in range(1,6)]; dk=int(np.argmax(cors))+1
-    s=np.sign(np.corrcoef(DC[:,dk],con)[0,1])*DC[:,dk]
-    return s, signature_from_score(mask,s)
+    return np.sign(np.corrcoef(DC[:,dk],con)[0,1])*DC[:,dk]
 
 # reference sets: global + age windows
 agebins=[('P3–7',(age>=3)&(age<=7)),('P8–14',(age>=8)&(age<=14)),
@@ -62,9 +73,9 @@ agebins=[('P3–7',(age>=3)&(age<=7)),('P8–14',(age>=8)&(age<=14)),
 refs=[('Global',np.ones(N,bool))]+agebins
 axes=[]; names=[]; sigs={}
 for rn,rm in refs:
-    for mn,fn in [('PC',pc_axis),('pT',dpt_axis)]:
-        _,ww=fn(rm); axes.append(project(ww)); names.append(f'{rn} · {mn}'); sigs[(rn,mn)]=ww
-        print(f'  built axis: {rn} · {mn}  (ref n={rm.sum()})')
+    ww=pc_axis(rm); axes.append(project(ww)); names.append(f'{rn} · PC (linear)'); sigs[(rn,'PC')]=ww
+    s=dpt_score(rm); axes.append(project_knn(rm,s)); names.append(f'{rn} · diffusion (nonlinear)')
+    print(f'  built axes: {rn}  (ref n={rm.sum()})')
 # consensus (shared genes across the 4 age PC signatures)
 agepc=[sigs[(rn,'PC')] for rn,_ in agebins]
 shared_mask=np.all([np.abs(w)>0 for w in agepc],0)   # nonzero (top-300) in every age
@@ -78,7 +89,15 @@ Y=np.vstack(axes).T.astype(np.float32)   # N x nAxes
 from scipy.stats import rankdata
 R=np.corrcoef(np.apply_along_axis(rankdata,0,Y).T)
 print('\naxis agreement (Spearman) vs Global·PC:')
-for i,n in enumerate(names): print(f'  {n:32s} {R[0,i]:+.2f}')
+for i,n in enumerate(names): print(f'  {n:38s} {R[0,i]:+.2f}')
+# does the nonlinear axis place mid-peak genes better? peak-bin on mature cells (/9)
+matq=maturity>np.quantile(maturity,0.75)
+def peakbin(y,g,B=10):
+    e=X[matq,gi[g]]; yy=y[matq]; q=np.quantile(yy,np.linspace(0,1,B+1)); bb=np.clip(np.digitize(yy,q[1:-1]),0,B-1)
+    m=np.array([e[bb==i].mean() if (bb==i).any() else np.nan for i in range(B)]); return int(np.nanargmax(m))
+print('\ngene peak-bin (mature, 0=A-pole .. 9=B-pole):  Global·PC(linear)  vs  Global·diffusion(nonlinear)')
+for g in ['Ndnf','Dock5','Cdh7','Igfbp2','Reln','Cxcl14','Nxph1','Krt73']:
+    if g in gi: print(f'  {g:8s} linear={peakbin(axes[0],g)}  nonlinear={peakbin(axes[1],g)}')
 
 # ---- NMF (k=12) with clean top genes per component ----
 Xh=X[:,hvg]; nmf=NMF(n_components=12,init='nndsvda',random_state=0,max_iter=500)

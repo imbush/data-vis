@@ -184,7 +184,7 @@ function redraw(){ if(curMode==='gene')colorByGene(curGene>=0?curGene:META.genes
 
 // axis selector
 const axsel=document.getElementById('axis');META.axis_names.forEach((n,i)=>{const o=document.createElement('option');o.value=i;o.text=n;axsel.appendChild(o);});
-document.getElementById('axnote').innerHTML='PC & pseudotime agree closely per age; the <b>P3–7</b> axis differs most from adult. "Consensus" = '+META.shared.length+' genes shared across all age axes.';
+document.getElementById('axnote').innerHTML='<b>PC (linear)</b> = one weight per gene (≈corr with the pole axis) — misses genes peaking mid-continuum (e.g. Ndnf). <b>diffusion (nonlinear)</b> = orders cells by full-transcriptome neighbourhood, so unimodal genes inform position. <b>P3–7</b> differs most from adult; "Consensus" = '+META.shared.length+' genes shared across age PC axes.';
 axsel.onchange=()=>{axisIdx=+axsel.value;yc=YC();refreshTable();redraw();};
 // x-axis selector (maturity <-> age)
 const xsel=document.getElementById('xaxis'),xnote=document.getElementById('xnote');
