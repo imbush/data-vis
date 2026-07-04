@@ -15,8 +15,16 @@ N,G=expr.shape; NAX=len(axis_names); K=W.shape[1]
 tbl=[{'g':genes[i],'i':i,'cls':gcls[i],'eta':round(geta[i],3)} for i in range(G) if gcls[i] in ('A-pole','B-pole','mid-peak','mid-dip')]
 tbl.sort(key=lambda r:-r['eta'])
 xed=[float(v) for v in np.quantile(mat,np.linspace(0,1,7))]
+def ref_of(nm):   # cells in which to measure gradedness for each axis
+    if nm.startswith('Global') or nm.startswith('Consensus'): return 'mat'
+    if nm.startswith('P3'):  return [3,7]
+    if nm.startswith('P8'):  return [8,14]
+    if nm.startswith('P15'): return [15,28]
+    if nm.startswith('P56'): return [56,56]
+    return 'mat'
+axis_ref=[ref_of(n) for n in axis_names]
 META=dict(n=N,g=G,k=K,nax=NAX,genes=genes,escale=escale,clu_cats=clu_cats,axis_names=axis_names,
-          nmf_top=nmf_top,mat_fac=matf,xed=xed,table=tbl,shared=shared)
+          nmf_top=nmf_top,mat_fac=matf,xed=xed,shared=shared,axis_ref=axis_ref)
 
 TEMPLATE=r"""<!doctype html><html><head><meta charset="utf-8"><title>DevVIS Lamp5 — maturation × continuum</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
@@ -57,7 +65,7 @@ TEMPLATE=r"""<!doctype html><html><head><meta charset="utf-8"><title>DevVIS Lamp
     <div id="nmfbtns" style="margin-top:4px"></div><div id="nmfgenes"></div></div>
   <div class="sec">Display</div>
   <label class="sld">dot size <input type="range" id="psz" min="1" max="9" step="0.5" value="4" style="width:150px;vertical-align:middle"> <span id="pszv">4</span></label>
-  <div class="sec">Smoothly-graded genes (along Global·PC)</div>
+  <div class="sec">Smoothly-graded genes along <span id="gtlabel" style="text-transform:none;color:#5a4a2a"></span></div>
   <div class="row" id="clsfilter">
    <button class="clsbtn on" data-c="all">all</button><button class="clsbtn" data-c="A-pole">A-pole</button>
    <button class="clsbtn" data-c="B-pole">B-pole</button><button class="clsbtn" data-c="mid-peak">mid-peak</button>
@@ -109,9 +117,43 @@ function emergence(j,label){const NY=12;const ye=[];const s=Float32Array.from(yc
   {margin:{l:34,r:8,t:22,b:30},title:{text:label+' — maturity (→) × continuum (↑) mean expression',font:{size:11}},
    xaxis:{title:'maturity bin',type:'category'},yaxis:{title:'continuum bin',type:'category'}},{responsive:true,displaylogo:false});}
 
+// gradedness of every gene along the SELECTED y-axis, measured in that axis's
+// reference cells (mature quartile for Global/Consensus, the age window otherwise).
+function computeTable(){
+ const ref=META.axis_ref[axisIdx], cells=[];
+ if(ref==='mat'){const q=quant(MAT,0.75);for(let i=0;i<N;i++)if(MAT[i]>q)cells.push(i);}
+ else{for(let i=0;i<N;i++)if(AGE[i]>=ref[0]&&AGE[i]<=ref[1])cells.push(i);}
+ const nc=cells.length,B=12; if(nc<80)return [];
+ const yv=cells.map(i=>yc[i]).sort((a,b)=>a-b); const ed=[];
+ for(let b=0;b<=B;b++)ed.push(yv[Math.min(nc-1,Math.floor(b/B*(nc-1)))]);
+ const cb=new Int8Array(nc);
+ for(let t=0;t<nc;t++){const v=yc[cells[t]];let b=B-1;for(let k=0;k<B;k++){if(v<=ed[k+1]){b=k;break;}}cb[t]=b;}
+ const im=(B-1)/2; let ivar=0;for(let b=0;b<B;b++)ivar+=(b-im)*(b-im);
+ const out=[];
+ for(let j=0;j<G;j++){
+  const bs=new Float64Array(B),bc=new Int32Array(B);let s=0,ss=0;
+  for(let t=0;t<nc;t++){const e=EXPR[cells[t]*G+j]/ES,b=cb[t];bs[b]+=e;bc[b]++;s+=e;ss+=e*e;}
+  const grand=s/nc,tot=ss-nc*grand*grand+1e-9;let bet=0,mm=0;const m=new Float64Array(B);
+  for(let b=0;b<B;b++){if(bc[b]>0)m[b]=bs[b]/bc[b];bet+=bc[b]*(m[b]-grand)*(m[b]-grand);mm+=m[b];}
+  const eta=bet/tot; if(eta<0.06)continue; mm/=B;
+  let mx=-1e9,mn=1e9,amax=0,amin=0,cov=0,mv=0;
+  for(let b=0;b<B;b++){if(m[b]>mx){mx=m[b];amax=b;}if(m[b]<mn){mn=m[b];amin=b;}}
+  for(let b=0;b<B;b++){cov+=(b-im)*(m[b]-mm);mv+=(m[b]-mm)*(m[b]-mm);}
+  const lin=cov/(Math.sqrt(ivar*mv)+1e-9),rng=mx-mn+1e-9;
+  const ppk=(m[amax]-Math.max(m[0],m[B-1]))/rng, pdp=(Math.min(m[0],m[B-1])-m[amin])/rng;
+  let cls=null;
+  if(Math.abs(lin)>=0.6) cls=lin>0?'B-pole':'A-pole';
+  else if(amax>=2&&amax<=B-3&&ppk>0.35) cls='mid-peak';
+  else if(amin>=2&&amin<=B-3&&pdp>0.35) cls='mid-dip';
+  if(cls) out.push({g:META.genes[j],i:j,cls:cls,eta:+eta.toFixed(3)});
+ }
+ out.sort((a,b)=>b.eta-a.eta); return out;
+}
+let curTable=[];
+function refreshTable(){curTable=computeTable();document.getElementById('gtlabel').textContent=META.axis_names[axisIdx];buildList();}
 function colorByGene(j){curGene=j;curMode='gene';const g=META.genes[j];document.getElementById('gin').value=g;
  scatter(gene(j),g+' (log₂)','Magma',false);
- const cls=META.gcls?'':''; setStatus('<b>'+g+'</b>'+(META.table.find(r=>r.i===j)?' · '+META.table.find(r=>r.i===j).cls+' · η²='+META.table.find(r=>r.i===j).eta.toFixed(2):''));
+ const t=curTable.find(r=>r.i===j); setStatus('<b>'+g+'</b>'+(t?' · '+t.cls+' · η²='+t.eta.toFixed(2)+' (along '+META.axis_names[axisIdx]+')':''));
  emergence(j,g);[...document.querySelectorAll('.grow')].forEach(r=>r.classList.toggle('sel',+r.dataset.j===j));}
 function colorByNMF(k){curNMF=k;curMode='nmf';const col=new Float32Array(N);for(let i=0;i<N;i++)col[i]=NMFW[i*K+k];
  scatter(col,'C'+(k+1)+' loading','Viridis',false);
@@ -131,7 +173,7 @@ function redraw(){ if(curMode==='gene')colorByGene(curGene>=0?curGene:META.genes
 // axis selector
 const axsel=document.getElementById('axis');META.axis_names.forEach((n,i)=>{const o=document.createElement('option');o.value=i;o.text=n;axsel.appendChild(o);});
 document.getElementById('axnote').innerHTML='PC & pseudotime agree closely per age; the <b>P3–7</b> axis differs most from adult. "Consensus" = '+META.shared.length+' genes shared across all age axes.';
-axsel.onchange=()=>{axisIdx=+axsel.value;yc=YC();redraw();};
+axsel.onchange=()=>{axisIdx=+axsel.value;yc=YC();refreshTable();redraw();};
 // mode
 document.getElementById('mode').onchange=()=>{const m=document.getElementById('mode').value;curMode=m;
  document.getElementById('genebox').style.display=m==='gene'?'block':'none';
@@ -147,11 +189,11 @@ const nb=document.getElementById('nmfbtns');for(let k=0;k<K;k++){const b=documen
 // graded gene list
 let clsFilter='all';
 function buildList(){const el=document.getElementById('glist');el.innerHTML='';
- META.table.filter(r=>clsFilter==='all'||r.cls===clsFilter).slice(0,400).forEach(r=>{const d=document.createElement('div');d.className='grow';d.dataset.j=r.i;
+ curTable.filter(r=>clsFilter==='all'||r.cls===clsFilter).slice(0,400).forEach(r=>{const d=document.createElement('div');d.className='grow';d.dataset.j=r.i;
   d.innerHTML='<span><span class="tag" style="background:'+CLSCOL[r.cls]+'">'+r.cls+'</span> '+r.g+'</span><span class="muted">η²'+r.eta.toFixed(2)+'</span>';
   d.onclick=()=>{document.getElementById('mode').value='gene';curMode='gene';document.getElementById('genebox').style.display='block';document.getElementById('nmfbox').style.display='none';colorByGene(r.i);};el.appendChild(d);});}
 document.querySelectorAll('.clsbtn').forEach(b=>b.onclick=()=>{document.querySelectorAll('.clsbtn').forEach(x=>x.classList.remove('on'));b.classList.add('on');clsFilter=b.dataset.c;buildList();});
-buildList();colorByGene(META.genes.indexOf('Cxcl14'));
+refreshTable();colorByGene(META.genes.indexOf('Cxcl14'));
 </script></body></html>"""
 # g_cls lookup for status (attach to table entries already); also expose gcls via table
 html=TEMPLATE.replace("__META__",json.dumps(META)).replace("__EXPR__",b64(expr)).replace("__MAT__",b64(mat))\
