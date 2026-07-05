@@ -672,8 +672,9 @@ function setColorKeyCats(title, items) {
     + it.color + '"></span>' + it.label + '</span>').join('');
   _ckEl().innerHTML = (title ? '<span class="ck-title">' + title + '</span>' : '') + sw;
   window.figColor = { kind: 'cats', title: title, items: items };
+  window.figGradValues = null;
 }
-function clearColorKey() { _ckEl().innerHTML = ''; window.figColor = null; }
+function clearColorKey() { _ckEl().innerHTML = ''; window.figColor = null; window.figGradValues = null; }
 """
 
 # Fixed "← All explorers" link back to the landing page, shown top-left on every

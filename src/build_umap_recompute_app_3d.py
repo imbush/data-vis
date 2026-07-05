@@ -846,21 +846,41 @@ function saveFigure(dark) {{
   const BG = dark ? '#0e1116' : '#ffffff', FG = dark ? '#eaeaea' : '#1a1a1a', GRID = dark ? '#39404d' : '#e6e6e6';
   const traces = [];
   const layout = {{ title:{{text:title, font:{{size:15, color:FG}}, x:0.5, xanchor:'center', y:0.98}},
-    margin:{{l:8,r:8,t:48,b:78}}, paper_bgcolor:BG, plot_bgcolor:BG, font:{{color:FG}}, showlegend:false }};
+    margin:{{l:6,r:6,t:44,b:12}}, paper_bgcolor:BG, plot_bgcolor:BG, font:{{color:FG}}, showlegend:false }};
   const fc = window.figColor;
   if (fc && fc.kind === 'grad') {{
-    const pts = {{mode:'markers', x:src.x, y:src.y, marker:{{size:is3d?3:5, color:colors}}, hoverinfo:'skip', showlegend:false}};
-    if (is3d) {{ pts.type='scatter3d'; pts.z=src.z; }} else pts.type='scattergl';
-    traces.push(pts);
-    // expression uses the verified per-cohort unit; QC titles (total counts,
-    // % ribosomal, genes detected, …) are already self-describing.
+    // expression uses the verified per-cohort unit; QC titles are self-describing.
     const unit = /express/i.test(fc.title) ? ' (' + EXPR_UNIT + ')' : '';
-    const cb = {{mode:'markers', x:[src.x[0]], y:[src.y[0]], opacity:0, hoverinfo:'skip', showlegend:false,
-      marker:{{color:[fc.lo], colorscale:PL[fc.palette]||'Viridis', cmin:fc.lo, cmax:fc.hi, showscale:true,
-        colorbar:{{orientation:'h', x:0.5, xanchor:'center', y:-0.06, yanchor:'top', len:0.55, thickness:16,
-          outlinecolor:GRID, tickfont:{{color:FG}}, title:{{text:fc.title + unit, side:'bottom', font:{{color:FG}}}}}}}}}};
-    if (is3d) {{ cb.type='scatter3d'; cb.z=[src.z[0]]; }} else cb.type='scattergl';
-    traces.push(cb);
+    const cbar = {{orientation:'h', x:0.5, xanchor:'center', y:0.03, yanchor:'bottom', len:0.5, thickness:14,
+      outlinecolor:GRID, tickfont:{{color:FG}}, title:{{text:fc.title + unit, side:'bottom', font:{{color:FG}}}}}};
+    const gv = window.figGradValues;
+    if (gv && gv.length === src.x.length) {{
+      // colour by NUMERIC value so the scale is reversible: dark → high=bright,
+      // light → high=dark (reversescale). Cells + colour bar then always match.
+      const ax=[],ay=[],az=[],av=[], gx=[],gy=[],gz=[];
+      for (let i=0;i<gv.length;i++) {{
+        if (gv[i]==null) {{ gx.push(src.x[i]); gy.push(src.y[i]); if(is3d) gz.push(src.z[i]); }}
+        else {{ ax.push(src.x[i]); ay.push(src.y[i]); if(is3d) az.push(src.z[i]); av.push(gv[i]); }}
+      }}
+      const pts = {{mode:'markers', x:ax, y:ay, hoverinfo:'skip', showlegend:false,
+        marker:{{size:is3d?3:5, color:av, colorscale:PL[fc.palette]||'Viridis', cmin:fc.lo, cmax:fc.hi,
+          reversescale: dark, showscale:true, colorbar:cbar}}}};
+      if (is3d) {{ pts.type='scatter3d'; pts.z=az; }} else pts.type='scattergl';
+      traces.push(pts);
+      if (gx.length) {{
+        const gt = {{mode:'markers', x:gx, y:gy, marker:{{size:is3d?3:5, color: dark?'#4b5563':'#dddddd'}}, hoverinfo:'skip', showlegend:false}};
+        if (is3d) {{ gt.type='scatter3d'; gt.z=gz; }} else gt.type='scattergl';
+        traces.push(gt);
+      }}
+    }} else {{
+      const pts = {{mode:'markers', x:src.x, y:src.y, marker:{{size:is3d?3:5, color:colors}}, hoverinfo:'skip', showlegend:false}};
+      if (is3d) {{ pts.type='scatter3d'; pts.z=src.z; }} else pts.type='scattergl';
+      traces.push(pts);
+      const cb = {{mode:'markers', x:[src.x[0]], y:[src.y[0]], opacity:0, hoverinfo:'skip', showlegend:false,
+        marker:{{color:[fc.lo], colorscale:PL[fc.palette]||'Viridis', cmin:fc.lo, cmax:fc.hi, reversescale:dark, showscale:true, colorbar:cbar}}}};
+      if (is3d) {{ cb.type='scatter3d'; cb.z=[src.z[0]]; }} else cb.type='scattergl';
+      traces.push(cb);
+    }}
   }} else {{
     let items;
     if (fc && fc.kind === 'cats') items = fc.items;
@@ -886,12 +906,12 @@ function saveFigure(dark) {{
       mkTrace(groups[c], transp ? NLGREY : c, transp ? (isLayer ? 'Not microdissected' : 'unassigned') : '');
     }});
     layout.showlegend = true;
-    layout.legend = {{orientation:'h', x:0.5, xanchor:'center', y:-0.02, yanchor:'top', font:{{size:10, color:FG}}, itemsizing:'constant'}};
+    layout.legend = {{orientation:'h', x:0.5, xanchor:'center', y:0.03, yanchor:'bottom', font:{{size:10, color:FG}}, itemsizing:'constant'}};
   }}
   if (is3d) {{
     let cam; try {{ cam = cellPlot._fullLayout.scene._scene.getCamera(); }} catch(e) {{ cam = (cellPlot.layout.scene||{{}}).camera; }}
     const ax = t => ({{title:{{text:t, font:{{color:FG}}}}, tickfont:{{color:FG}}, gridcolor:GRID, zerolinecolor:GRID, backgroundcolor:BG, showbackground:true, color:FG}});
-    layout.scene = {{ camera:cam, aspectmode:'data', xaxis:ax(VIZ_METHOD+' 1'), yaxis:ax(VIZ_METHOD+' 2'), zaxis:ax(VIZ_METHOD+' 3') }};
+    layout.scene = {{ camera:cam, domain:{{x:[0,1], y:[0.15,0.96]}}, aspectmode:'data', xaxis:ax(VIZ_METHOD+' 1'), yaxis:ax(VIZ_METHOD+' 2'), zaxis:ax(VIZ_METHOD+' 3') }};
   }} else {{
     const ax2 = t => ({{title:{{text:t, font:{{color:FG}}}}, tickfont:{{color:FG}}, gridcolor:GRID, zerolinecolor:GRID, zeroline:false, linecolor:GRID}});
     layout.xaxis = ax2(VIZ_METHOD+' 1'); layout.yaxis = ax2(VIZ_METHOD+' 2');
@@ -970,6 +990,7 @@ genePlot.on('plotly_hover', function(data) {{
   const n = N_CELLS; const col = new Array(n);
   for (let i = 0; i < n; i++) col[i] = cell_active[i] ? expr_matrix[i * N_GENES + j] : null;
   // strip nulls for the magma range (so hidden cells stay dark)
+  window.figGradValues = col.map(v => v === null ? null : v / EXPR_SCALE);   // for saved-figure numeric colouring
   const visible = col.filter(v => v !== null);
   const colors = exprToMagma(visible);
   const cellColors = new Array(n);
@@ -1101,6 +1122,7 @@ function runSearch() {{
   let _lo = Infinity, _hi = -Infinity;
   for (const v of visible) {{ if (v < _lo) _lo = v; if (v > _hi) _hi = v; }}
   if (visible.length) setColorKeyGradient(gene_name[j] + ' expression', 'magma', _lo/EXPR_SCALE, _hi/EXPR_SCALE, v => v.toFixed(2));
+  window.figGradValues = col.map(v => v === null ? null : v / EXPR_SCALE);   // for saved-figure numeric colouring
   const lc = loadingToMagma(gene_load[j]);
   Plotly.restyle(cellPlot, {{'marker.color': [lc]}}, [LOADING_TRACE]);
   Plotly.restyle(genePlot, {{'marker.color': [lc]}}, [LOADING_TRACE]);
@@ -1361,6 +1383,7 @@ function colorByQC(arr, label, fmt) {{
   let vi = 0;
   const cellColors = arr.map((v, i) => cell_active[i] ? palette[vi++] : '#dddddd');
   Plotly.restyle(cellPlot, {{'marker.color': [cellColors]}}, [POINTS_TRACE]);
+  window.figGradValues = arr.map((v, i) => cell_active[i] ? v : null);   // for saved-figure numeric colouring
   let lo = Infinity, hi = -Infinity;
   for (const v of valid) {{ if (v < lo) lo = v; if (v > hi) hi = v; }}
   status.innerHTML = '';
