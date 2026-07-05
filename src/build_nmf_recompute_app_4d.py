@@ -39,6 +39,9 @@ TET_V = np.array([
     [-1,  1, -1],
     [-1, -1,  1],
 ], dtype=float) / np.sqrt(3)
+# Equilateral triangle (K=3 view): unit circumradius, z=0 plane.
+TRI_V = np.array([[np.cos(a), np.sin(a), 0.0]
+                  for a in (np.pi/2, np.pi/2 + 2*np.pi/3, np.pi/2 + 4*np.pi/3)], dtype=float)
 
 
 def nmf_fit(X, K, seed=42, max_iter=400, tol=1e-4):
@@ -454,7 +457,10 @@ def main():
         f"const POLE_NAMES_  = {json.dumps(ARCH_NAMES + ['', ''])};\n"
         f"const POLE_COLORS_ = {json.dumps(list(ARCH_COLORS) + ['rgba(0,0,0,0)', 'rgba(0,0,0,0)'])};\n"
         f"const TET_V = {json.dumps(TET_V.tolist())};\n"
+        f"const TRI_V = {json.dumps(TRI_V.tolist())};\n"
         f"const K_ARCH = {K_ARCH};\n"
+        "let activeK = K_ARCH;                       // 3 (triangle) or 4 (tetrahedron)\n"
+        "function activeSimplexV(){ return activeK === 3 ? TRI_V : TET_V; }\n"
         f"const gene_sets    = {json.dumps(set_masks)};\n"
         f"const gene_set_counts = {json.dumps(set_counts)};\n"
         f"const magma        = {json.dumps(list(Magma256))};\n"
@@ -729,6 +735,9 @@ details summary {{ cursor: pointer; color: #666; font-size: 12px; }}
     <button class="lin-btn" data-lin="MGE" title="Select MGE-derived subclasses: Pvalb (incl chandelier) + Sst (incl Chodl)">+MGE</button>
     <button class="lin-btn" data-lin="CGE" title="Select CGE-derived subclasses: Vip + Lamp5 + Sncg + Serpinf1 (+ Lamp5 Lhx6)">+CGE</button>
     <button class="lin-btn" data-lin="LGE" title="Select LGE-derived subclasses (rare in cortex; mostly striatal)">+LGE</button>
+    <span class="lin-sep">|</span>
+    <label class="rank-label" title="Number of NMF archetypes: 4 → tetrahedron (3D), 3 → triangle (2D). Switching refits NMF on the current cells.">archetypes
+      <select id="karch-select" style="margin-left:4px; font-size:12px; padding:2px 4px;"><option value="4">4 · tetrahedron</option><option value="3">3 · triangle</option></select></label>
     <button id="recompute-btn" title="Refit NMF on the panel HVG, using only the checked-subtype cells.">Replot with gene panel</button>
     <button id="recompute-genes-btn" title="Refit NMF using only the genes currently shown in the right biplot (gene set ∩ mean/std/metabolism filters). With no gene filter active this is all genes.">Replot with shown genes</button>
     <span id="recompute-status" style="margin-left:8px;"></span>
@@ -955,8 +964,8 @@ function saveFigure(dark) {{
       layout.scene = {{ camera:cam, domain:{{x:[0,1], y:[0.15,0.96]}}, aspectmode:'data', xaxis:ax(VIZ_METHOD+' 1'), yaxis:ax(VIZ_METHOD+' 2'), zaxis:ax(VIZ_METHOD+' 3') }};
     }}
   }} else {{
-    const ax2 = t => ({{title:{{text:t, font:{{color:FG}}}}, tickfont:{{color:FG}}, gridcolor:GRID, zerolinecolor:GRID, zeroline:false, linecolor:GRID}});
-    layout.xaxis = ax2(VIZ_METHOD+' 1'); layout.yaxis = ax2(VIZ_METHOD+' 2');
+    const ax2 = (t, dom) => ({{title:{{text:t, font:{{color:FG}}}}, tickfont:{{color:FG}}, gridcolor:GRID, zerolinecolor:GRID, zeroline:false, linecolor:GRID, domain:dom}});
+    layout.xaxis = ax2(VIZ_METHOD+' 1', [0.05, 0.99]); layout.yaxis = ax2(VIZ_METHOD+' 2', [0.22, 0.965]);
   }}
   Plotly.toImage({{data:traces, layout:layout}}, {{format:'png', width:1000, height:820, scale:2}}).then(url => {{
     const a = document.createElement('a'); a.href = url; a.download = figFilename(rank, dark); a.click();
@@ -1887,6 +1896,7 @@ function multiplicativeUpdateNMF(X, K, maxIter) {{
 }}
 
 function recomputeNMF(basisIdx, basisLabel) {{
+  const K_ARCH = activeK;   // shadow the global: make the whole recompute K-generic (3 or 4)
   // basisIdx is the list of gene indices the NMF is *fit on* (panel of genes).
   // Default = the panel HVG. Pass currently-visible gene indices to refit on
   // whatever the gene biplot is showing.
@@ -2011,16 +2021,13 @@ function recomputeNMF(basisIdx, basisLabel) {{
     newGeneLoading[j] = out;
   }}
 
-  // Project to tetrahedron (barycentric → cartesian). One pass for cells, one for genes.
+  // Project to the active simplex (barycentric → cartesian), K-generic.
+  const SV = activeSimplexV();
   function bary2xyz(weights) {{
-    const sum = weights.reduce((a, b) => a + b, 0) + 1e-12;
-    const x = (weights[0]*TET_V[0][0] + weights[1]*TET_V[1][0]
-             + weights[2]*TET_V[2][0] + weights[3]*TET_V[3][0]) / sum;
-    const y = (weights[0]*TET_V[0][1] + weights[1]*TET_V[1][1]
-             + weights[2]*TET_V[2][1] + weights[3]*TET_V[3][1]) / sum;
-    const z = (weights[0]*TET_V[0][2] + weights[1]*TET_V[1][2]
-             + weights[2]*TET_V[2][2] + weights[3]*TET_V[3][2]) / sum;
-    return [x, y, z];
+    let sum = 0; for (let k = 0; k < K_ARCH; k++) sum += weights[k]; sum += 1e-12;
+    let x = 0, y = 0, z = 0;
+    for (let k = 0; k < K_ARCH; k++) {{ x += weights[k]*SV[k][0]; y += weights[k]*SV[k][1]; z += weights[k]*SV[k][2]; }}
+    return [x/sum, y/sum, z/sum];
   }}
 
   const n_cells_total = cell_subtype.length;
@@ -2033,15 +2040,13 @@ function recomputeNMF(basisIdx, basisLabel) {{
   const newCellActive = new Array(n_cells_total).fill(false);
   cellSel.forEach((i, ii) => {{
     newCellActive[i] = true;
-    const w = [Wflat[ii*K_ARCH], Wflat[ii*K_ARCH+1], Wflat[ii*K_ARCH+2], Wflat[ii*K_ARCH+3]];
+    const w = []; for (let k = 0; k < K_ARCH; k++) w.push(Wflat[ii*K_ARCH + k]);
     const xyz = bary2xyz(w);
     newCellX[i] = +xyz[0].toFixed(4);
     newCellY[i] = +xyz[1].toFixed(4);
     newCellZ[i] = +xyz[2].toFixed(4);
-    newCellScore[i] = [+w[0].toFixed(3), +w[1].toFixed(3),
-                       +w[2].toFixed(3), +w[3].toFixed(3)];
-    newCellLoad[i]  = [+w[0].toFixed(4), +w[1].toFixed(4),
-                       +w[2].toFixed(4), +w[3].toFixed(4)];
+    newCellScore[i] = w.map(v => +v.toFixed(3));
+    newCellLoad[i]  = w.map(v => +v.toFixed(4));
   }});
 
   const newGeneX = new Array(n_all), newGeneY = new Array(n_all), newGeneZ = new Array(n_all);
@@ -2052,8 +2057,7 @@ function recomputeNMF(basisIdx, basisLabel) {{
     newGeneX[j] = +xyz[0].toFixed(4);
     newGeneY[j] = +xyz[1].toFixed(4);
     newGeneZ[j] = +xyz[2].toFixed(4);
-    newGeneLoad[j] = [+h[0].toFixed(4), +h[1].toFixed(4),
-                      +h[2].toFixed(4), +h[3].toFixed(4)];
+    newGeneLoad[j] = h.map(v => +v.toFixed(4));
   }}
 
   // Dominant-NMF factor index per cell / gene
@@ -2086,7 +2090,7 @@ function recomputeNMF(basisIdx, basisLabel) {{
   gene_x = newGeneX; gene_y = newGeneY; gene_z = newGeneZ;
   cell_load = newCellLoad; gene_load = newGeneLoad;
   cell_score = newCellScore;
-  gene_loading = newGeneLoading.map(L => [+L[0].toFixed(3), +L[1].toFixed(3), +L[2].toFixed(3)]);
+  gene_loading = newGeneLoading.map(L => L.map(v => +v.toFixed(3)));
   cell_dom_color = newCellDom; gene_dom_color = newGeneDom;
   cell_active = newCellActive;
   pole_top = newPoleTop;
@@ -2102,11 +2106,22 @@ function recomputeNMF(basisIdx, basisLabel) {{
   // 2. gene points: positions + colors
   Plotly.restyle(genePlot, {{'marker.color':[gene_default_colors]}}, [POINTS_TRACE]);
   applyGeneFilter();   // applies the current mean/std sliders → positions for visible genes
-  // 3. vertex labels (NMF factors): update text on both plots
-  const newPoleLab = [];
-  for (let p = 0; p < 6; p++) newPoleLab.push(POLE_NAMES_[p] || '');
-  Plotly.restyle(cellPlot, {{text:[newPoleLab], hovertext:[newPoleLab]}}, [VERTEX_TRACE]);
-  Plotly.restyle(genePlot, {{text:[newPoleLab], hovertext:[newPoleLab]}}, [VERTEX_TRACE]);
+  // 3. redraw the archetype simplex (K-generic): vertex positions + labels + edges.
+  //    Lets the plot switch between the K=4 tetrahedron and the K=3 triangle.
+  const POLE = 1.22;
+  const vX=[],vY=[],vZ=[],vLab=[];
+  for (let k = 0; k < 6; k++) {{
+    if (k < activeK) {{ vX.push(SV[k][0]*POLE); vY.push(SV[k][1]*POLE); vZ.push(SV[k][2]*POLE); vLab.push(POLE_NAMES_[k] || ('A'+(k+1))); }}
+    else {{ vX.push(0); vY.push(0); vZ.push(0); vLab.push(''); }}
+  }}
+  const eX=[],eY=[],eZ=[];
+  for (let a = 0; a < activeK; a++) for (let b = a+1; b < activeK; b++) {{
+    eX.push(SV[a][0], SV[b][0], null); eY.push(SV[a][1], SV[b][1], null); eZ.push(SV[a][2], SV[b][2], null);
+  }}
+  [cellPlot, genePlot].forEach(gd => {{
+    Plotly.restyle(gd, {{x:[eX], y:[eY], z:[eZ]}}, [0]);                                    // edge trace
+    Plotly.restyle(gd, {{x:[vX], y:[vY], z:[vZ], text:[vLab], hovertext:[vLab]}}, [VERTEX_TRACE]);
+  }});
   // 4. loading dots: reset to gray (hovered state is stale)
   Plotly.restyle(cellPlot, {{'marker.color':[DEFAULT_LOAD_COLORS]}}, [LOADING_TRACE]);
   Plotly.restyle(genePlot, {{'marker.color':[DEFAULT_LOAD_COLORS]}}, [LOADING_TRACE]);
@@ -2131,6 +2146,18 @@ document.getElementById('recompute-btn').addEventListener('click', () => {{
   const btn = document.getElementById('recompute-btn');
   btn.disabled = true; recomputeStatus.textContent = 'computing…';
   setTimeout(() => {{ try {{ recomputeNMF(panel_idx, 'panel HVG'); }} finally {{ btn.disabled = false; }} }}, 30);
+}});
+
+// K = 3 (triangle) ↔ 4 (tetrahedron): refit NMF on the current cells + relayout.
+document.getElementById('karch-select').addEventListener('change', function() {{
+  activeK = parseInt(this.value) || 4;
+  const cam = (activeK === 3)
+    ? {{eye:{{x:0, y:0, z:2.4}}, up:{{x:0, y:1, z:0}}, center:{{x:0, y:0, z:0}}}}   // top-down for the flat triangle
+    : {{eye:{{x:1.8, y:1.8, z:1.4}}, up:{{x:0, y:0, z:1}}, center:{{x:0, y:0, z:0}}}};
+  Plotly.relayout(cellPlot, {{'scene.camera': cam}});
+  Plotly.relayout(genePlot, {{'scene.camera': cam}});
+  recomputeStatus.textContent = 'computing K=' + activeK + '…';
+  setTimeout(() => {{ recomputeNMF(panel_idx, 'panel HVG'); }}, 30);
 }});
 
 function visibleGeneIdx() {{

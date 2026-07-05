@@ -917,8 +917,8 @@ function saveFigure(dark) {{
     const ax = t => ({{title:{{text:t, font:{{color:FG}}}}, tickfont:{{color:FG}}, gridcolor:GRID, zerolinecolor:GRID, backgroundcolor:BG, showbackground:true, color:FG}});
     layout.scene = {{ camera:cam, domain:{{x:[0,1], y:[0.15,0.96]}}, aspectmode:'data', xaxis:ax(VIZ_METHOD+' 1'), yaxis:ax(VIZ_METHOD+' 2'), zaxis:ax(VIZ_METHOD+' 3') }};
   }} else {{
-    const ax2 = t => ({{title:{{text:t, font:{{color:FG}}}}, tickfont:{{color:FG}}, gridcolor:GRID, zerolinecolor:GRID, zeroline:false, linecolor:GRID}});
-    layout.xaxis = ax2(VIZ_METHOD+' 1'); layout.yaxis = ax2(VIZ_METHOD+' 2');
+    const ax2 = (t, dom) => ({{title:{{text:t, font:{{color:FG}}}}, tickfont:{{color:FG}}, gridcolor:GRID, zerolinecolor:GRID, zeroline:false, linecolor:GRID, domain:dom}});
+    layout.xaxis = ax2(VIZ_METHOD+' 1', [0.05, 0.99]); layout.yaxis = ax2(VIZ_METHOD+' 2', [0.22, 0.965]);
   }}
   Plotly.toImage({{data:traces, layout:layout}}, {{format:'png', width:1000, height:820, scale:2}}).then(url => {{
     const a = document.createElement('a'); a.href = url; a.download = figFilename(rank, dark); a.click();
