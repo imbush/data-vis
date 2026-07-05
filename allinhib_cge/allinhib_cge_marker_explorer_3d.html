@@ -1063,7 +1063,7 @@ if (cellPlot.data) boot(); else cellPlot.on('plotly_afterplot', function once() 
 </script>
 
 <script>
-/* copy-link snippet v5 — patches a "Copy link" button into deployed explorers,
+/* copy-link snippet v6 — patches a "Copy link" button into deployed explorers,
  * AND makes the cross-explorer View: nav-bar carry the current UI state across.
  *
  * Click "Copy link" → serialises every UI control into a base64 JSON blob in
@@ -1306,7 +1306,7 @@ if (cellPlot.data) boot(); else cellPlot.on('plotly_afterplot', function once() 
   }
 
   // Intercept clicks on the cross-explorer View: nav links and inject the
-  // current UI state into the target URL hash so switching PCA ↔ UMAP ↔
+  // current UI state into the target URL hash so switching SVD ↔ UMAP ↔
   // diffmap ↔ NMF keeps the subtype subset, gene filter, region toggle,
   // metabolism slider, etc.
   function instrumentVizNav() {
@@ -1337,8 +1337,8 @@ if (cellPlot.data) boot(); else cellPlot.on('plotly_afterplot', function once() 
     btn.textContent = '🔗 Copy link';
     btn.style.cssText =
       'position:fixed;top:10px;right:max(10px,calc(50vw - 845px));font-size:12px;padding:5px 10px;' +
-      'background:#fff;border:1px solid #aaa;border-radius:4px;cursor:pointer;' +
-      'z-index:99999;box-shadow:0 1px 3px rgba(0,0,0,0.15);font-family:inherit;';
+      'background:rgba(255,255,255,.9);border:1px solid #cdbf9f;border-radius:7px;color:#5a4326;font-weight:600;' +
+      'cursor:pointer;z-index:99999;box-shadow:0 1px 3px rgba(0,0,0,0.08);font-family:inherit;';
     document.body.appendChild(btn);
     btn.addEventListener('click', async () => {
       const s = gather();

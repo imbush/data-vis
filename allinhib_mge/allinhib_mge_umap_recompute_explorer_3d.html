@@ -569,7 +569,9 @@ function refreshTitles() {
 }
 
 // ---- Save figure: PNG of the current cell plot, camera view + colouring ----
-function saveFigure() {
+// dark=true themes backgrounds/text/axes/legend for a dark background (data
+// colours are kept — viridis/magma/subtype palettes read well on both).
+function saveFigure(dark) {
   if (typeof cellPlot === 'undefined' || !cellPlot || !cellPlot.data || !cellPlot.data[POINTS_TRACE]) { alert('Figure export not available.'); return; }
   const rankEl = document.getElementById('rank-input');
   const rank = Math.max(1, Math.min(3, parseInt(rankEl ? rankEl.value : 3) || 3));
@@ -580,9 +582,10 @@ function saveFigure() {
   const colors = Array.isArray(col) ? col : src.x.map(() => col);
   const is3d = rank >= 3;                        // rank 1/2 -> drop the 3rd axis
   const PL = {magma:'Magma', viridis:'Viridis'};
+  const BG = dark ? '#0e1116' : '#ffffff', FG = dark ? '#eaeaea' : '#1a1a1a', GRID = dark ? '#39404d' : '#e6e6e6';
   const traces = [];
-  const layout = { title:{text:title, font:{size:15}, x:0.5, xanchor:'center', y:0.98},
-    margin:{l:8,r:8,t:48,b:78}, paper_bgcolor:'#fff', plot_bgcolor:'#fff', showlegend:false };
+  const layout = { title:{text:title, font:{size:15, color:FG}, x:0.5, xanchor:'center', y:0.98},
+    margin:{l:8,r:8,t:48,b:78}, paper_bgcolor:BG, plot_bgcolor:BG, font:{color:FG}, showlegend:false };
   const fc = window.figColor;
   if (fc && fc.kind === 'grad') {
     const pts = {mode:'markers', x:src.x, y:src.y, marker:{size:is3d?3:5, color:colors}, hoverinfo:'skip', showlegend:false};
@@ -594,7 +597,7 @@ function saveFigure() {
     const cb = {mode:'markers', x:[src.x[0]], y:[src.y[0]], opacity:0, hoverinfo:'skip', showlegend:false,
       marker:{color:[fc.lo], colorscale:PL[fc.palette]||'Viridis', cmin:fc.lo, cmax:fc.hi, showscale:true,
         colorbar:{orientation:'h', x:0.5, xanchor:'center', y:-0.06, yanchor:'top', len:0.55, thickness:16,
-          title:{text:fc.title + unit, side:'bottom'}}}};
+          outlinecolor:GRID, tickfont:{color:FG}, title:{text:fc.title + unit, side:'bottom', font:{color:FG}}}}};
     if (is3d) { cb.type='scatter3d'; cb.z=[src.z[0]]; } else cb.type='scattergl';
     traces.push(cb);
   } else {
@@ -613,33 +616,32 @@ function saveFigure() {
     // labelled categories first, in the key's own order (layers go superficial→deep)
     items.forEach(it => { if (groups[it.color]) { mkTrace(groups[it.color], it.color, it.label); used[it.color] = 1; } });
     // leftover groups: a fully-transparent colour (alpha 0, e.g. no-layer cells) can
-    // blank scatter3d during toImage on some GPUs — render it faint grey and label it.
+    // blank scatter3d during toImage on some GPUs — render it grey (theme-aware) and label it.
     const isLayer = /layer|microdiss/i.test((fc && fc.title) || '');
+    const NLGREY = dark ? '#6b7280' : '#c9c9c9';
     Object.keys(groups).forEach(c => {
       if (used[c]) return;
       const transp = /,\s*0\s*\)\s*$/.test(String(c));
-      mkTrace(groups[c], transp ? '#c9c9c9' : c, transp ? (isLayer ? 'Not microdissected' : 'unassigned') : '');
+      mkTrace(groups[c], transp ? NLGREY : c, transp ? (isLayer ? 'Not microdissected' : 'unassigned') : '');
     });
     layout.showlegend = true;
-    layout.legend = {orientation:'h', x:0.5, xanchor:'center', y:-0.02, yanchor:'top', font:{size:10}, itemsizing:'constant'};
+    layout.legend = {orientation:'h', x:0.5, xanchor:'center', y:-0.02, yanchor:'top', font:{size:10, color:FG}, itemsizing:'constant'};
   }
   if (is3d) {
     let cam; try { cam = cellPlot._fullLayout.scene._scene.getCamera(); } catch(e) { cam = (cellPlot.layout.scene||{}).camera; }
-    layout.scene = { camera:cam, aspectmode:'data',
-      xaxis:{title:VIZ_METHOD+' 1'}, yaxis:{title:VIZ_METHOD+' 2'}, zaxis:{title:VIZ_METHOD+' 3'} };
+    const ax = t => ({title:{text:t, font:{color:FG}}, tickfont:{color:FG}, gridcolor:GRID, zerolinecolor:GRID, backgroundcolor:BG, showbackground:true, color:FG});
+    layout.scene = { camera:cam, aspectmode:'data', xaxis:ax(VIZ_METHOD+' 1'), yaxis:ax(VIZ_METHOD+' 2'), zaxis:ax(VIZ_METHOD+' 3') };
   } else {
-    layout.xaxis = {title:VIZ_METHOD+' 1', zeroline:false};
-    layout.yaxis = {title:VIZ_METHOD+' 2', zeroline:false};
+    const ax2 = t => ({title:{text:t, font:{color:FG}}, tickfont:{color:FG}, gridcolor:GRID, zerolinecolor:GRID, zeroline:false, linecolor:GRID});
+    layout.xaxis = ax2(VIZ_METHOD+' 1'); layout.yaxis = ax2(VIZ_METHOD+' 2');
   }
-  const btn = document.getElementById('save-fig-btn'); if (btn) btn.textContent = 'rendering…';
   Plotly.toImage({data:traces, layout:layout}, {format:'png', width:1000, height:820, scale:2}).then(url => {
-    const a = document.createElement('a'); a.href = url; a.download = figFilename(rank);
-    a.click(); if (btn) btn.textContent = '⤓ Save figure';
-  }).catch(e => { alert('Export failed: ' + e); if (btn) btn.textContent = '⤓ Save figure'; });
+    const a = document.createElement('a'); a.href = url; a.download = figFilename(rank, dark); a.click();
+  }).catch(e => { alert('Export failed: ' + e); });
 }
 // filename encodes the current settings (colouring, subset, gene restrictions) in plaintext
-function figFilename(rank) {
-  const parts = [VIZ_METHOD, titleCellColor, 'rank' + rank];
+function figFilename(rank, dark) {
+  const parts = [VIZ_METHOD, titleCellColor, 'rank' + rank, dark ? 'dark' : 'light'];
   if (typeof activeSet !== 'undefined') parts.push('genes-' + activeSet);
   try {
     const sel = Array.from(selectedSubtypes()), total = subtypeCheckboxes ? subtypeCheckboxes.length : sel.length;
@@ -661,13 +663,16 @@ function figFilename(rank) {
   if (rg && rg.checked) parts.push('regress-ribo');
   return parts.join('_').replace(/[^A-Za-z0-9+._-]+/g, '-').replace(/-+/g, '-').replace(/^[-_]+|[-_]+$/g, '').slice(0, 200) + '.png';
 }
-(function() {  // Save-figure button, sits just left of the Copy-link button
-  const b = document.createElement('button'); b.id = 'save-fig-btn'; b.textContent = '⤓ Save figure';
-  b.title = 'Download a PNG of the current cell plot, camera view and colouring';
-  b.style.cssText = 'position:fixed;top:10px;right:calc(max(10px, 50vw - 845px) + 104px);z-index:1000;'
-    + 'font-size:12px;padding:5px 10px;border:1px solid #cdbf9f;border-radius:7px;background:rgba(255,255,255,.9);'
-    + 'cursor:pointer;font-weight:600;color:#5a4326;box-shadow:0 1px 3px rgba(0,0,0,.08)';
-  b.onclick = saveFigure; document.body.appendChild(b);
+(function() {  // Save-figure buttons (light / dark), sit just left of Copy-link
+  const mk = (label, tip, dark, rightPx) => {
+    const b = document.createElement('button'); b.className = 'save-fig-btn'; b.textContent = label; b.title = tip;
+    b.style.cssText = 'position:fixed;top:10px;right:calc(max(10px, 50vw - 845px) + ' + rightPx + 'px);z-index:1000;'
+      + 'font-size:12px;padding:5px 10px;border:1px solid #cdbf9f;border-radius:7px;background:rgba(255,255,255,.9);'
+      + 'cursor:pointer;font-weight:600;color:#5a4326;box-shadow:0 1px 3px rgba(0,0,0,.08)';
+    b.onclick = () => saveFigure(dark); document.body.appendChild(b);
+  };
+  mk('⤓ Save (dark)',  'Download a PNG (dark background) of the current cell plot, view and colouring',  true,  104);
+  mk('⤓ Save (light)', 'Download a PNG (light background) of the current cell plot, view and colouring', false, 210);
 })();
 
 function exprToMagma(values) {
@@ -830,6 +835,11 @@ function runSearch() {
   let vi = 0;
   for (let i = 0; i < n; i++) cellColors[i] = (col[i] === null) ? '#bbbbbb' : colors[vi++];
   Plotly.restyle(cellPlot, {'marker.color': [cellColors]}, [POINTS_TRACE]);
+  // update the colour key + saved-figure state to THIS gene (hover-colouring does
+  // this; search previously did not, so the saved colour bar was stale/missing).
+  let _lo = Infinity, _hi = -Infinity;
+  for (const v of visible) { if (v < _lo) _lo = v; if (v > _hi) _hi = v; }
+  if (visible.length) setColorKeyGradient(gene_name[j] + ' expression', 'magma', _lo/EXPR_SCALE, _hi/EXPR_SCALE, v => v.toFixed(2));
   const lc = loadingToMagma(gene_load[j]);
   Plotly.restyle(cellPlot, {'marker.color': [lc]}, [LOADING_TRACE]);
   Plotly.restyle(genePlot, {'marker.color': [lc]}, [LOADING_TRACE]);
@@ -2171,7 +2181,7 @@ if (AUTO_RECOMPUTE_DEFAULT && !location.hash.includes('s=')) {
 </script>
 
 <script>
-/* copy-link snippet v5 — patches a "Copy link" button into deployed explorers,
+/* copy-link snippet v6 — patches a "Copy link" button into deployed explorers,
  * AND makes the cross-explorer View: nav-bar carry the current UI state across.
  *
  * Click "Copy link" → serialises every UI control into a base64 JSON blob in
@@ -2445,8 +2455,8 @@ if (AUTO_RECOMPUTE_DEFAULT && !location.hash.includes('s=')) {
     btn.textContent = '🔗 Copy link';
     btn.style.cssText =
       'position:fixed;top:10px;right:max(10px,calc(50vw - 845px));font-size:12px;padding:5px 10px;' +
-      'background:#fff;border:1px solid #aaa;border-radius:4px;cursor:pointer;' +
-      'z-index:99999;box-shadow:0 1px 3px rgba(0,0,0,0.15);font-family:inherit;';
+      'background:rgba(255,255,255,.9);border:1px solid #cdbf9f;border-radius:7px;color:#5a4326;font-weight:600;' +
+      'cursor:pointer;z-index:99999;box-shadow:0 1px 3px rgba(0,0,0,0.08);font-family:inherit;';
     document.body.appendChild(btn);
     btn.addEventListener('click', async () => {
       const s = gather();
