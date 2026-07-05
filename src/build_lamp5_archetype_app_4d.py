@@ -665,13 +665,15 @@ function setColorKeyGradient(title, palette, lo, hi, fmt) {
     + '<span class="ck-lab">' + fmt(lo) + '</span>'
     + '<span class="ck-grad" style="background:' + g + '"></span>'
     + '<span class="ck-lab">' + fmt(hi) + '</span>';
+  window.figColor = { kind: 'grad', title: title, palette: palette, lo: lo, hi: hi };
 }
 function setColorKeyCats(title, items) {
   const sw = items.map(it => '<span class="ck-sw"><span class="ck-dot" style="background:'
     + it.color + '"></span>' + it.label + '</span>').join('');
   _ckEl().innerHTML = (title ? '<span class="ck-title">' + title + '</span>' : '') + sw;
+  window.figColor = { kind: 'cats', title: title, items: items };
 }
-function clearColorKey() { _ckEl().innerHTML = ''; }
+function clearColorKey() { _ckEl().innerHTML = ''; window.figColor = null; }
 """
 
 # Fixed "← All explorers" link back to the landing page, shown top-left on every

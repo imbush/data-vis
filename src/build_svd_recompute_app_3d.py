@@ -370,6 +370,10 @@ def main():
     ) if DUAL_LEVEL else ''
     js_data = (
         f"const EXPR_SCALE  = {EXPR_SCALE};\n"
+        # Expression units, verified from the source h5ad: Tasic X = ln(CPM+1)
+        # (natural log; exp(X)-1 reproduces the cpm layer exactly), dev-VIS/ABC
+        # cohorts are log2(x+1). Used to label the saved-figure colour bar.
+        f"const EXPR_UNIT = {json.dumps('log2(x+1)' if base.LOG_SCALE_X else ('ln(CP10K+1)' if base.GROUP_NAME.startswith('Fezf2') else 'ln(CPM+1)'))};\n"
         f"const N_CELLS = {n_cells_emit};\n"
         f"const N_GENES = {n_genes_emit};\n"
         f"const EXPR_B64 = {json.dumps(expr_b64)};\n"
@@ -828,6 +832,108 @@ function refreshTitles() {{
   if (gt) gt.innerHTML = 'Genes plotted on <b>' + VIZ_METHOD + '</b> axes · coloured by <b>'
     + titleGeneRef + '</b> · n=' + titleGeneN.toLocaleString();
 }}
+
+// ---- Save figure: PNG of the current cell plot, camera view + colouring ----
+function saveFigure() {{
+  if (typeof cellPlot === 'undefined' || !cellPlot || !cellPlot.data || !cellPlot.data[POINTS_TRACE]) {{ alert('Figure export not available.'); return; }}
+  const rankEl = document.getElementById('rank-input');
+  const rank = Math.max(1, Math.min(3, parseInt(rankEl ? rankEl.value : 3) || 3));
+  const src = cellPlot.data[POINTS_TRACE];
+  const title = 'Cells plotted on ' + VIZ_METHOD + ' axes · coloured by ' + titleCellColor
+    + ' · n=' + activeCellCount().toLocaleString();
+  const col = src.marker && src.marker.color;
+  const colors = Array.isArray(col) ? col : src.x.map(() => col);
+  const is3d = rank >= 3;                        // rank 1/2 -> drop the 3rd axis
+  const PL = {{magma:'Magma', viridis:'Viridis'}};
+  const traces = [];
+  const layout = {{ title:{{text:title, font:{{size:15}}, x:0.5, xanchor:'center', y:0.98}},
+    margin:{{l:8,r:8,t:48,b:78}}, paper_bgcolor:'#fff', plot_bgcolor:'#fff', showlegend:false }};
+  const fc = window.figColor;
+  if (fc && fc.kind === 'grad') {{
+    const pts = {{mode:'markers', x:src.x, y:src.y, marker:{{size:is3d?3:5, color:colors}}, hoverinfo:'skip', showlegend:false}};
+    if (is3d) {{ pts.type='scatter3d'; pts.z=src.z; }} else pts.type='scattergl';
+    traces.push(pts);
+    // expression uses the verified per-cohort unit; QC titles (total counts,
+    // % ribosomal, genes detected, …) are already self-describing.
+    const unit = /express/i.test(fc.title) ? ' (' + EXPR_UNIT + ')' : '';
+    const cb = {{mode:'markers', x:[src.x[0]], y:[src.y[0]], opacity:0, hoverinfo:'skip', showlegend:false,
+      marker:{{color:[fc.lo], colorscale:PL[fc.palette]||'Viridis', cmin:fc.lo, cmax:fc.hi, showscale:true,
+        colorbar:{{orientation:'h', x:0.5, xanchor:'center', y:-0.06, yanchor:'top', len:0.55, thickness:16,
+          title:{{text:fc.title + unit, side:'bottom'}}}}}}}};
+    if (is3d) {{ cb.type='scatter3d'; cb.z=[src.z[0]]; }} else cb.type='scattergl';
+    traces.push(cb);
+  }} else {{
+    let items;
+    if (fc && fc.kind === 'cats') items = fc.items;
+    else items = Object.keys(subtype_palette).map(c => ({{color:subtype_palette[c], label:c}}));
+    const groups = {{}};
+    for (let i = 0; i < colors.length; i++) {{ const c = colors[i]; (groups[c] = groups[c] || []).push(i); }}
+    const used = {{}};
+    const mkTrace = (idx, displayColor, name) => {{
+      const tr = {{mode:'markers', name: name || '', x: idx.map(i=>src.x[i]), y: idx.map(i=>src.y[i]),
+        marker:{{size:is3d?3:5, color:displayColor}}, showlegend: !!name, hoverinfo:'skip'}};
+      if (is3d) tr.z = idx.map(i=>src.z[i]);
+      tr.type = is3d ? 'scatter3d' : 'scattergl'; traces.push(tr);
+    }};
+    // labelled categories first, in the key's own order (layers go superficial→deep)
+    items.forEach(it => {{ if (groups[it.color]) {{ mkTrace(groups[it.color], it.color, it.label); used[it.color] = 1; }} }});
+    // leftover groups: a fully-transparent colour (alpha 0, e.g. no-layer cells) can
+    // blank scatter3d during toImage on some GPUs — render it faint grey and label it.
+    const isLayer = /layer|microdiss/i.test((fc && fc.title) || '');
+    Object.keys(groups).forEach(c => {{
+      if (used[c]) return;
+      const transp = /,\s*0\s*\)\s*$/.test(String(c));
+      mkTrace(groups[c], transp ? '#c9c9c9' : c, transp ? (isLayer ? 'Not microdissected' : 'unassigned') : '');
+    }});
+    layout.showlegend = true;
+    layout.legend = {{orientation:'h', x:0.5, xanchor:'center', y:-0.02, yanchor:'top', font:{{size:10}}, itemsizing:'constant'}};
+  }}
+  if (is3d) {{
+    let cam; try {{ cam = cellPlot._fullLayout.scene._scene.getCamera(); }} catch(e) {{ cam = (cellPlot.layout.scene||{{}}).camera; }}
+    layout.scene = {{ camera:cam, aspectmode:'data',
+      xaxis:{{title:VIZ_METHOD+' 1'}}, yaxis:{{title:VIZ_METHOD+' 2'}}, zaxis:{{title:VIZ_METHOD+' 3'}} }};
+  }} else {{
+    layout.xaxis = {{title:VIZ_METHOD+' 1', zeroline:false}};
+    layout.yaxis = {{title:VIZ_METHOD+' 2', zeroline:false}};
+  }}
+  const btn = document.getElementById('save-fig-btn'); if (btn) btn.textContent = 'rendering…';
+  Plotly.toImage({{data:traces, layout:layout}}, {{format:'png', width:1000, height:820, scale:2}}).then(url => {{
+    const a = document.createElement('a'); a.href = url; a.download = figFilename(rank);
+    a.click(); if (btn) btn.textContent = '⤓ Save figure';
+  }}).catch(e => {{ alert('Export failed: ' + e); if (btn) btn.textContent = '⤓ Save figure'; }});
+}}
+// filename encodes the current settings (colouring, subset, gene restrictions) in plaintext
+function figFilename(rank) {{
+  const parts = [VIZ_METHOD, titleCellColor, 'rank' + rank];
+  if (typeof activeSet !== 'undefined') parts.push('genes-' + activeSet);
+  try {{
+    const sel = Array.from(selectedSubtypes()), total = subtypeCheckboxes ? subtypeCheckboxes.length : sel.length;
+    if (sel.length === 0) parts.push('no-subtypes');
+    else if (sel.length >= total) parts.push('all-subtypes');
+    else if (sel.length <= 8) parts.push('subtypes-' + sel.join('+'));
+    else parts.push(sel.length + 'of' + total + '-subtypes');
+  }} catch (e) {{}}
+  if (typeof activeRegion !== 'undefined' && activeRegion && activeRegion !== 'both') parts.push('region-' + activeRegion);
+  try {{
+    const ab = document.querySelectorAll('.ag-btn');
+    if (typeof activeAges !== 'undefined' && activeAges && ab.length && activeAges.size > 0 && activeAges.size < ab.length)
+      parts.push('ages-' + Array.from(activeAges).join('+'));
+  }} catch (e) {{}}
+  const mn = meanSlider, sd = stdSlider, rb = riboSlider, rg = regressRiboToggle;
+  if (mn && +mn.value > +mn.min + 1e-9) parts.push('minmean' + (+mn.value).toFixed(2));
+  if (sd && +sd.value > +sd.min + 1e-9) parts.push('minstd' + (+sd.value).toFixed(2));
+  if (rb && +rb.value < 1) parts.push('metabfilt' + (+rb.value).toFixed(2));
+  if (rg && rg.checked) parts.push('regress-ribo');
+  return parts.join('_').replace(/[^A-Za-z0-9+._-]+/g, '-').replace(/-+/g, '-').replace(/^[-_]+|[-_]+$/g, '').slice(0, 200) + '.png';
+}}
+(function() {{  // Save-figure button, sits just left of the Copy-link button
+  const b = document.createElement('button'); b.id = 'save-fig-btn'; b.textContent = '⤓ Save figure';
+  b.title = 'Download a PNG of the current cell plot, camera view and colouring';
+  b.style.cssText = 'position:fixed;top:10px;right:calc(max(10px, 50vw - 845px) + 104px);z-index:1000;'
+    + 'font-size:12px;padding:5px 10px;border:1px solid #cdbf9f;border-radius:7px;background:rgba(255,255,255,.9);'
+    + 'cursor:pointer;font-weight:600;color:#5a4326;box-shadow:0 1px 3px rgba(0,0,0,.08)';
+  b.onclick = saveFigure; document.body.appendChild(b);
+}})();
 
 function exprToMagma(values) {{
   let lo = Infinity, hi = -Infinity;
@@ -1427,20 +1533,27 @@ if (layerBtn) {{
       return;
     }}
     const depths = _layers.map(layerToDepth);
-    const validVals = depths.filter((d, i) => cell_active[i] && !isNaN(d));
-    const palette = valuesToViridis(validVals);
-    let pi = 0;
+    // depth-proportional viridis, but coloured per DISCRETE layer (one colour
+    // per layer) with a categorical key rather than a continuous gradient.
+    let lo = Infinity, hi = -Infinity;
+    depths.forEach((d, i) => {{ if (cell_active[i] && !isNaN(d)) {{ if (d < lo) lo = d; if (d > hi) hi = d; }} }});
+    const range = (hi > lo) ? (hi - lo) : 1;
+    const depthColor = d => viridis[Math.max(0, Math.min(255, Math.round(255 * (d - lo) / range)))];
     const colors = depths.map((d, i) => {{
       if (!cell_active[i]) return '#dddddd';
-      if (!isNaN(d)) return palette[pi++];
-      return GREY_NO_LAYER;
+      if (!isNaN(d)) return depthColor(d);
+      return GREY_NO_LAYER;                 // multi-layer / pan dissection: faint
     }});
     Plotly.restyle(cellPlot, {{'marker.color': [colors]}}, [POINTS_TRACE]);
-    let lo = Infinity, hi = -Infinity;
-    for (const v of validVals) {{ if (v < lo) lo = v; if (v > hi) hi = v; }}
+    // discrete per-layer key: distinct layers present, ordered superficial→deep.
+    // Drives both the on-page colour key and the saved-figure legend.
+    const seen = new Map();
+    depths.forEach((d, i) => {{ if (cell_active[i] && !isNaN(d) && !seen.has(d)) seen.set(d, layerLabel(d)); }});
+    const items = Array.from(seen.keys()).sort((a, b) => a - b).map(d => ({{color: depthColor(d), label: seen.get(d)}}));
     const greyN = depths.filter((d, i) => cell_active[i] && isNaN(d)).length;
-    status.innerHTML = '';
-    if (validVals.length) setColorKeyGradient('layer (microdissection)', 'viridis', lo, hi, layerLabel); else clearColorKey();
+    titleCellColor = 'layer of microdissection'; refreshTitles();
+    status.innerHTML = greyN ? ('<i>' + greyN.toLocaleString() + ' cells from multi-layer / pan dissections shown faint.</i>') : '';
+    if (items.length) setColorKeyCats('layer (microdissection)', items); else clearColorKey();
   }});
 }}
 
